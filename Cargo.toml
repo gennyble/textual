@@ -7,10 +7,10 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tokio = { version = "1", features = ["full"] }
-warp = "0.3"
+small_http = { path = "../small_http" }
+smol = "1.2.5"
+thiserror = "1.0"
+
 image = "0.23"
-serde_derive = "1"
-serde = "1"
-bracket-color = "0.8.2"
-fontster = { git = "https://github.com/gennyble/fontster", branch = "main" }
+#fontster = { git = "https://github.com/gennyble/fontster", branch = "main" }
+fontster = { path = "../fontster" }
