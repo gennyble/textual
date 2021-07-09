@@ -1,89 +1,117 @@
-use std::sync::Arc;
+mod query;
+mod text;
 
-use bracket_color::prelude::RGB as BrRGB;
-use fontster::{Font, Settings};
-use image::jpeg::JpegEncoder;
-use serde_derive::{Deserialize, Serialize};
-use warp::{
-    hyper::{Response, StatusCode},
-    Filter,
+use std::{
+    convert::{TryFrom, TryInto},
+    net::{TcpListener, TcpStream},
 };
 
-#[derive(Clone, Deserialize, Serialize)]
-struct Query {
-    text: String,
-    color: Option<String>,
-    bcolor: Option<String>,
+use fontster::{Color, Font, Settings};
+use image::png::PngEncoder;
+use query::QueryParseError;
+use small_http::{Connection, ConnectionError, Response};
+use smol::Async;
+use std::sync::Arc;
+use text::TextError;
+use thiserror::Error;
+
+use crate::query::Query;
+use crate::text::Text;
+
+fn main() {
+    let listener = Async::<TcpListener>::bind(([127, 0, 0, 1], 8080)).unwrap();
+
+    smol::block_on(listen(listener))
 }
 
-impl Into<Settings> for Query {
-    fn into(self) -> Settings {
-        let colordef = |cstropt: Option<String>, def: (u8, u8, u8)| match cstropt {
-            Some(color_string) => {
-                if let Ok(color) = BrRGB::from_hex(format!("#{}", color_string)) {
-                    (
-                        (color.r * 255.0) as u8,
-                        (color.g * 255.0) as u8,
-                        (color.b * 255.0) as u8,
-                    )
-                } else {
-                    def
-                }
-            }
-            None => def,
-        };
+async fn listen(listener: Async<TcpListener>) {
+    let font = Arc::new(vec![fontster::get_font(), fontster::get_font_italic()]);
 
-        Settings {
-            text_color: colordef(self.color, (255, 255, 255)),
-            background_color: colordef(self.bcolor, (0, 0, 0)),
-            draw_baseline: false,
-            draw_glyph_outline: false,
-            draw_sentence_outline: false,
-        }
+    loop {
+        let (stream, clientaddr) = listener.accept().await.unwrap();
+        println!("connection from {}", clientaddr);
+
+        let task = smol::spawn(error_handler(font.clone(), stream));
+        task.detach();
     }
 }
 
-#[tokio::main]
-async fn main() {
-    let font = Arc::new(fontster::get_font());
+async fn error_handler(arcfont: Arc<Vec<Font>>, stream: Async<TcpStream>) {
+    let mut connection = Connection::new(stream);
 
-    let opt_query = warp::query::<Query>()
-        .map(Some)
-        .or_else(|_| async { Ok::<(Option<Query>,), std::convert::Infallible>((None,)) });
+    let response = match serve(arcfont, &mut connection).await {
+        Ok(resp) => resp,
+        Err(e) => Response::builder()
+            .header("content-type", "text/plain")
+            .body(e.to_string().as_bytes().to_vec())
+            .unwrap(),
+    };
 
-    let text_image =
-        warp::get()
-            .and(warp::path::end())
-            .and(opt_query)
-            .map(move |p: Option<Query>| match p {
-                Some(query) => {
-                    let buffer = make_image(font.as_ref(), query);
-
-                    Response::builder()
-                        .header("Content-type", "image/jpeg")
-                        .body(buffer)
-                }
-                None => Response::builder()
-                    .status(StatusCode::BAD_REQUEST)
-                    .body(b"NO!".as_ref().to_owned()),
-            });
-
-    warp::serve(text_image).run(([127, 0, 0, 1], 8080)).await
+    connection
+        .respond(response)
+        .await
+        .expect("Failed to respond to connection")
 }
 
-fn make_image(font: &Font, query: Query) -> Vec<u8> {
-    let image = fontster::do_sentence(font, &query.text, query.clone().into());
+async fn serve(
+    arcfont: Arc<Vec<Font>>,
+    con: &mut Connection,
+) -> Result<Response<Vec<u8>>, ServiceError> {
+    let request = con.parse_request().await?;
+    let query: Query = request.uri().query().unwrap_or("").parse()?;
+    let mut text: Text = query.try_into()?;
+
+    let agent = request
+        .headers()
+        .get("user-agent")
+        .unwrap()
+        .to_str()
+        .unwrap();
+    println!("ua: {:?}", request.headers().get("user-agent"));
+
+    let img = if agent.contains("Discordbot")
+        || agent.trim()
+            == "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.10; rv:38.0) Gecko/20100101 Firefox/38.0"
+    {
+        //text.text = String::from("Discordbot");
+        make_image(arcfont.as_ref(), text)
+    } else {
+        make_image(arcfont.as_ref(), text)
+        //return Ok(Response::builder().status(500).body(vec![]).unwrap());
+    };
+
+    Ok(Response::builder()
+        .header("content-type", "image/png")
+        .header("content-length", img.len())
+        .body(img)
+        .map_err(|e| ConnectionError::UnknownError(e))?)
+}
+
+fn make_image(font: &Vec<Font>, text: Text) -> Vec<u8> {
+    let font = if text.italic { &font[1] } else { &font[0] };
+
+    let image = fontster::do_sentence(font, &text.text, text.clone().into());
     let mut encoded_buffer = vec![];
 
-    let mut encoder = JpegEncoder::new(&mut encoded_buffer);
+    let mut encoder = PngEncoder::new(&mut encoded_buffer);
     encoder
         .encode(
             image.data(),
             image.width() as u32,
             image.height() as u32,
-            image::ColorType::Rgb8,
+            image::ColorType::Rgba8,
         )
         .unwrap();
 
     encoded_buffer
+}
+
+#[derive(Debug, Error)]
+enum ServiceError {
+    #[error("{0}")]
+    ClientError(#[from] ConnectionError),
+    #[error("your query string did not make sense: {0}")]
+    QueryError(#[from] QueryParseError),
+    #[error("{0}")]
+    TextError(#[from] TextError),
 }
