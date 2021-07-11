@@ -33,7 +33,7 @@ impl Query {
     }
 
     fn uncode_string<S: AsRef<str>>(urlencoded: S) -> Result<String, QueryParseError> {
-        let mut uncoded = String::new();
+        let mut uncoded: Vec<u8> = vec![];
 
         let mut chars = urlencoded.as_ref().chars();
         loop {
@@ -45,20 +45,26 @@ impl Query {
                     }
                     _ => return Err(QueryParseError::IncompletePercent("%".into())),
                 },
-                Some(c) => uncoded.push(c),
-                None => return Ok(uncoded),
+                Some(c) => {
+                    let mut utf8 = vec![0; c.len_utf8()];
+                    c.encode_utf8(&mut utf8);
+                    uncoded.extend_from_slice(&utf8);
+                }
+                None => {
+                    return Ok(String::from_utf8(uncoded).map_err(|_| QueryParseError::InvalidUtf8)?)
+                }
             }
         }
     }
 
-    fn from_hex(upper: char, lower: char) -> Result<char, QueryParseError> {
+    fn from_hex(upper: char, lower: char) -> Result<u8, QueryParseError> {
         let digit = |c: char| -> Result<u8, QueryParseError> {
             c.to_digit(16)
                 .map(|big| big as u8)
                 .ok_or(QueryParseError::ImproperHex(upper))
         };
 
-        Ok(((digit(upper)? * 16) + digit(lower)?) as char)
+        Ok((digit(upper)? * 16) + digit(lower)?)
     }
 }
 
@@ -98,4 +104,6 @@ pub enum QueryParseError {
     ImproperHex(char),
     #[error("'{0}' is not valid percent encoding")]
     IncompletePercent(String),
+    #[error("the query did not resolve to valid utf8")]
+    InvalidUtf8,
 }
