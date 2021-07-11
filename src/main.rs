@@ -3,8 +3,10 @@ mod text;
 
 use std::{
     convert::{TryFrom, TryInto},
-    io::Read,
+    fs::{File, FileType},
+    io::{self, Read, Write},
     net::{TcpListener, TcpStream},
+    path::PathBuf,
     time::Instant,
 };
 
@@ -14,7 +16,7 @@ use query::QueryParseError;
 use serde::Serialize;
 use serde_json::Value;
 use small_http::{Connection, ConnectionError, Response};
-use smol::Async;
+use smol::{lock::Mutex, Async};
 use std::sync::Arc;
 use text::TextError;
 use thiserror::Error;
@@ -23,9 +25,117 @@ use tinytemplate::TinyTemplate;
 use crate::query::Query;
 use crate::text::Text;
 
+struct FontCache {
+    location: PathBuf,
+    fonts: Vec<Family>,
+}
+
+impl FontCache {
+    fn new<P: Into<PathBuf>>(location: P) -> io::Result<Self> {
+        let mut cache = FontCache {
+            location: location.into(),
+            fonts: vec![],
+        };
+
+        cache.populate().unwrap();
+
+        Ok(cache)
+    }
+
+    fn family<S: AsRef<str>>(&self, name: S) -> Option<&Family> {
+        for font in &self.fonts {
+            if font.name == name.as_ref() {
+                return Some(font);
+            }
+        }
+
+        None
+    }
+
+    fn family_mut<S: AsRef<str>>(&mut self, name: S) -> Option<&mut Family> {
+        for font in self.fonts.iter_mut() {
+            if font.name == name.as_ref() {
+                return Some(font);
+            }
+        }
+
+        None
+    }
+
+    fn get_regular<S: AsRef<str>>(&self, fam: S) -> Option<Font> {
+        if let Some(fam) = self.family(fam) {
+            if let Some(path) = fam.varient("regular") {
+                let mut file = File::open(path).unwrap();
+
+                let mut buffer = vec![];
+                file.read_to_end(&mut buffer).unwrap();
+
+                return Some(fontster::parse_font(&mut buffer));
+            }
+        }
+
+        None
+    }
+
+    fn populate(&mut self) -> io::Result<()> {
+        let dir = std::fs::read_dir(&self.location)?;
+
+        for entry in dir {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            let fname = path.file_stem().unwrap().to_str().unwrap();
+            let (varient, family) = match fname.split_once('-') {
+                Some((varient, family)) => (varient, family),
+                _ => {
+                    eprintln!("Unknown file in cache: {}", fname);
+                    continue;
+                }
+            };
+
+            let ftype = entry.file_type().unwrap();
+
+            if ftype.is_file() {
+                if let Some(mut fam) = self.family_mut(family) {
+                    fam.push(varient, entry.path().to_str().unwrap());
+                } else {
+                    let mut fam = Family::new(family);
+                    fam.push(varient, entry.path().to_str().unwrap());
+                    self.fonts.push(fam);
+                }
+            }
+        }
+
+        println!("{} files in cache", self.fonts.len());
+
+        Ok(())
+    }
+
+    fn save_font<F: AsRef<str>, V: AsRef<str>>(&mut self, family: F, varient: V, buf: &[u8]) {
+        let family = family.as_ref();
+        let varient = varient.as_ref();
+        let fname = format!("{}-{}.ttf", varient, family);
+        let mut path = self.location.clone();
+        path.push(fname);
+
+        let mut file = File::create(&path).unwrap();
+        file.write_all(buf).unwrap();
+
+        if let Some(family) = self.family_mut(family) {
+            family.push(varient, path.to_str().unwrap())
+        } else {
+            let mut fam = Family::new(family);
+            fam.push(varient, path.to_str().unwrap());
+            self.fonts.push(fam);
+        }
+
+        println!("saved font {}", path.to_str().unwrap());
+    }
+}
+
 struct FontProvider {
     default: Arc<Font>,
     fonts: Vec<Family>,
+    font_cache: FontCache,
 }
 
 impl FontProvider {
@@ -33,6 +143,7 @@ impl FontProvider {
         Self {
             default: Arc::new(fontster::get_font()),
             fonts: vec![],
+            font_cache: FontCache::new("/tmp/fonts").unwrap(),
         }
     }
 
@@ -50,13 +161,23 @@ impl FontProvider {
         None
     }
 
-    fn regular<S: AsRef<str>>(&self, fam: Option<S>) -> Arc<Font> {
+    fn regular<S: AsRef<str>>(&mut self, fam: Option<S>) -> Arc<Font> {
         if let Some(fam) = fam {
-            if let Some(family) = self.family(fam) {
+            let fam = fam.as_ref();
+
+            if let Some(font) = self.font_cache.get_regular(fam) {
+                println!("hit cache for {}", fam);
+                return Arc::new(font);
+            } else if let Some(family) = self.family(fam) {
+                println!("missed cache for {}", fam);
+
                 let regular = family.varient("regular").unwrap();
                 let response = ureq::get(regular).call().unwrap();
                 let mut buffer: Vec<u8> = Vec::new();
                 let body = response.into_reader().read_to_end(&mut buffer).unwrap();
+
+                self.font_cache.save_font(fam, "regular", &buffer);
+
                 return Arc::new(fontster::parse_font(&buffer));
             }
         }
@@ -93,12 +214,14 @@ impl Family {
     }
 }
 
+type Provider = Arc<Mutex<FontProvider>>;
+
 fn main() {
     let provider = get_font_list().unwrap();
 
     let listener = Async::<TcpListener>::bind(([127, 0, 0, 1], 8080)).unwrap();
 
-    smol::block_on(listen(Arc::new(provider), listener))
+    smol::block_on(listen(Arc::new(Mutex::new(provider)), listener))
 }
 
 fn get_font_list() -> Result<FontProvider, ureq::Error> {
@@ -136,7 +259,7 @@ fn get_font_list() -> Result<FontProvider, ureq::Error> {
     Ok(provider)
 }
 
-async fn listen(fp: Arc<FontProvider>, listener: Async<TcpListener>) {
+async fn listen(fp: Provider, listener: Async<TcpListener>) {
     loop {
         let (stream, clientaddr) = listener.accept().await.unwrap();
         println!("connection from {}", clientaddr);
@@ -146,7 +269,7 @@ async fn listen(fp: Arc<FontProvider>, listener: Async<TcpListener>) {
     }
 }
 
-async fn error_handler(provider: Arc<FontProvider>, stream: Async<TcpStream>) {
+async fn error_handler(provider: Provider, stream: Async<TcpStream>) {
     let mut connection = Connection::new(stream);
 
     let response = match serve(provider, &mut connection).await {
@@ -164,7 +287,7 @@ async fn error_handler(provider: Arc<FontProvider>, stream: Async<TcpStream>) {
 }
 
 async fn serve(
-    provider: Arc<FontProvider>,
+    provider: Arc<Mutex<FontProvider>>,
     con: &mut Connection,
 ) -> Result<Response<Vec<u8>>, ServiceError> {
     let request = con.parse_request().await?;
@@ -183,9 +306,11 @@ async fn serve(
         request.uri().path_and_query().unwrap().to_string()
     );
 
-    let font = provider.regular(text.font.clone());
-
     if text.forceraw {
+        let font = {
+            let mut provider = provider.lock().await;
+            provider.regular(text.font.clone())
+        };
         // Image
         Ok(make_image(font, text)?)
     } else {
