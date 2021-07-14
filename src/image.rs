@@ -1,4 +1,4 @@
-use crate::color::{self, Color};
+use crate::color::Color;
 
 #[derive(Debug, PartialEq)]
 pub enum Colors {

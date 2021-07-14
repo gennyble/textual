@@ -112,7 +112,7 @@ impl Text {
 
         // Half RGBA hex?
         if s.as_ref().len() == 4 {
-            let mut components: Vec<u8> = s
+            let components: Vec<u8> = s
                 .as_ref()
                 .chars()
                 .filter_map(|c| hexpair(&[c, c]))
