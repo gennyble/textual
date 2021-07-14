@@ -38,6 +38,7 @@ impl Query {
         let mut chars = urlencoded.as_ref().chars();
         loop {
             match chars.next() {
+                Some('+') => uncoded.push(b' '),
                 Some('%') => match (chars.next(), chars.next()) {
                     (Some(upper), Some(lower)) => uncoded.push(Self::from_hex(upper, lower)?),
                     (Some(upper), None) => {
