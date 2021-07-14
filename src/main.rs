@@ -138,6 +138,7 @@ struct Meta {
     text: String,
     image_link: String,
     font: String,
+    hex_color: String,
 }
 
 fn make_meta<S: AsRef<str>>(
@@ -154,6 +155,7 @@ fn make_meta<S: AsRef<str>>(
             query_string.as_ref()
         ),
         font: text.font.unwrap_or("Cabin".into()),
+        hex_color: text.color.as_hex()[..6].into(),
     };
 
     let doc = tt.render("html", &content).unwrap();

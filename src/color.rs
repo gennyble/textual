@@ -21,8 +21,12 @@ impl Color {
 
     pub const WHITE: Color = Color::new(255, 255, 255, 255);
 
-    pub const fn new(r: u8, b: u8, g: u8, a: u8) -> Self {
+    pub const fn new(r: u8, g: u8, b: u8, a: u8) -> Self {
         Self { r, g, b, a }
+    }
+
+    pub fn as_hex(&self) -> String {
+        format!("{:02X}{:02X}{:02X}{:02X}", self.r, self.g, self.b, self.a)
     }
 }
 
@@ -68,5 +72,21 @@ impl TryFrom<&[u8]> for Color {
         } else {
             Err(())
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn as_hex() {
+        assert_eq!(Color::WHITE.as_hex(), "FFFFFFFF");
+        assert_eq!(Color::BLACK.as_hex(), "000000FF");
+
+        assert_eq!(Color::RED.as_hex(), "FF0000FF");
+        assert_eq!(Color::GREEN.as_hex(), "00FF00FF");
+        assert_eq!(Color::BLUE.as_hex(), "0000FFFF");
+        assert_eq!(Color::TRANSPARENT.as_hex(), "00000000");
     }
 }
