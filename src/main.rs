@@ -1,3 +1,7 @@
+extern crate image as crateimage;
+
+mod color;
+mod image;
 mod query;
 mod text;
 
@@ -10,8 +14,8 @@ use std::{
     time::Instant,
 };
 
-use fontster::{Color, Font, Settings};
-use image::png::PngEncoder;
+use crateimage::png::PngEncoder;
+use fontster::{Font, Layout};
 use query::QueryParseError;
 use serde::Serialize;
 use serde_json::Value;
@@ -22,8 +26,8 @@ use text::TextError;
 use thiserror::Error;
 use tinytemplate::TinyTemplate;
 
-use crate::query::Query;
-use crate::text::Text;
+use crate::{image::Colors, text::Text};
+use crate::{image::Image, query::Query};
 
 struct FontCache {
     location: PathBuf,
@@ -70,7 +74,7 @@ impl FontCache {
                 let mut buffer = vec![];
                 file.read_to_end(&mut buffer).unwrap();
 
-                return Some(fontster::parse_font(&mut buffer));
+                return Some(fontster::parse_font(&mut buffer).unwrap());
             }
         }
 
@@ -84,7 +88,7 @@ impl FontCache {
             let entry = entry.unwrap();
             let path = entry.path();
             let fname = path.file_stem().unwrap().to_str().unwrap();
-            let (varient, family) = match fname.split_once('-') {
+            let (family, varient) = match fname.rsplit_once('-') {
                 Some((varient, family)) => (varient, family),
                 _ => {
                     eprintln!("Unknown file in cache: {}", fname);
@@ -113,7 +117,7 @@ impl FontCache {
     fn save_font<F: AsRef<str>, V: AsRef<str>>(&mut self, family: F, varient: V, buf: &[u8]) {
         let family = family.as_ref();
         let varient = varient.as_ref();
-        let fname = format!("{}-{}.ttf", varient, family);
+        let fname = format!("{}-{}.ttf", family, varient);
         let mut path = self.location.clone();
         path.push(fname);
 
@@ -141,9 +145,11 @@ struct FontProvider {
 impl FontProvider {
     fn new() -> Self {
         Self {
-            default: Arc::new(fontster::get_font()),
+            default: Arc::new(
+                fontster::parse_font(include_bytes!("../Cabin-Regular.ttf")).unwrap(),
+            ),
             fonts: vec![],
-            font_cache: FontCache::new("/tmp/fonts").unwrap(),
+            font_cache: FontCache::new("fonts").unwrap(),
         }
     }
 
@@ -178,7 +184,7 @@ impl FontProvider {
 
                 self.font_cache.save_font(fam, "regular", &buffer);
 
-                return Arc::new(fontster::parse_font(&buffer));
+                return Arc::new(fontster::parse_font(&buffer).unwrap());
             }
         }
 
@@ -290,9 +296,16 @@ async fn serve(
     provider: Arc<Mutex<FontProvider>>,
     con: &mut Connection,
 ) -> Result<Response<Vec<u8>>, ServiceError> {
-    let request = con.parse_request().await?;
-    let query_string = request.uri().query().unwrap_or("");
-    let mut text: Text = query_string.parse::<Query>()?.try_into()?;
+    let request = con.request().await?.unwrap();
+
+    let query = match request.uri().query() {
+        Some(query_str) => query_str,
+        None => return Ok(serve_tool()?),
+    };
+
+    println!("'{}'", query);
+
+    let text: Text = query.parse::<Query>()?.try_into()?;
 
     let agent = request
         .headers()
@@ -307,28 +320,38 @@ async fn serve(
     );
 
     if text.forceraw {
-        let font = {
-            let mut provider = provider.lock().await;
-            provider.regular(text.font.clone())
-        };
         // Image
-        Ok(make_image(font, text)?)
+        Ok(make_image(provider, text).await?)
     } else {
-        Ok(make_meta(query_string, text)?)
+        Ok(make_meta(query, text)?)
     }
 }
 
-fn make_image(font: Arc<Font>, text: Text) -> Result<Response<Vec<u8>>, ConnectionError> {
-    let image = fontster::do_sentence(font.as_ref(), &text.text, text.clone().into());
+fn serve_tool() -> Result<Response<Vec<u8>>, ConnectionError> {
+    let html = std::fs::read_to_string("tool.html")?.into_bytes();
+
+    Response::builder()
+        .header("content-type", "text/html")
+        .header("content-length", html.len())
+        .body(html)
+        .map_err(|e| ConnectionError::UnknownError(e))
+}
+
+async fn make_image(
+    mut provider: Arc<Mutex<FontProvider>>,
+    text: Text,
+) -> Result<Response<Vec<u8>>, ConnectionError> {
+    let image = text.make_image(&mut provider).await;
+
     let mut encoded_buffer = vec![];
 
-    let mut encoder = PngEncoder::new(&mut encoded_buffer);
+    let encoder = PngEncoder::new(&mut encoded_buffer);
     encoder
         .encode(
             image.data(),
             image.width() as u32,
             image.height() as u32,
-            image::ColorType::Rgba8,
+            crateimage::ColorType::Rgba8,
         )
         .unwrap();
 
@@ -345,6 +368,7 @@ static TEMPLATE: &'static str = include_str!("template.htm");
 struct Meta {
     text: String,
     image_link: String,
+    font: String,
 }
 
 fn make_meta<S: AsRef<str>>(
@@ -360,6 +384,7 @@ fn make_meta<S: AsRef<str>>(
             "https://textual.bookcase.name?{}&forceraw",
             query_string.as_ref()
         ),
+        font: text.font.unwrap_or("Cabin".into()),
     };
 
     let doc = tt.render("html", &content).unwrap();

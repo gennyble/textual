@@ -5,16 +5,21 @@
 
 	<meta name="twitter:card" content="summary_large_image">
 	<meta name="twitter:site" content="@gennyble">
-	<meta name="twitter:title" content="An Image of Text">
+	<meta name="twitter:title" content="An Image of Text in the font {font}">
 	<meta name="twitter:description" content="{text}">
 	<meta name="twitter:image" content="{image_link}">
 
-	<meta property="og:title" content="An Image of Text">
+	<meta property="og:title" content="An Image of Text in the font {font}">
 	<meta property="og:site_name" content="Textual">
 	<meta property="og:image" content="{image_link}">
 	<meta property="og:description" content="{text}">
 
 	<title>{text}</title>
 </head>
+
+<body
+	style="width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; text-align: center; background-color: #36393f; margin: 0; padding: 0;">
+	<img style="max-width: 90vw" src="{image_link}" alt="{text}">
+</body>
 
 </html>

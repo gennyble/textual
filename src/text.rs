@@ -1,19 +1,24 @@
 use std::convert::TryFrom;
 
-use fontster::{Color, Settings};
+use fontster::Layout;
+use smol::lock::Mutex;
 use thiserror::Error;
 
-use crate::query::Query;
+use crate::{
+    color::Color,
+    image::{Colors, Image},
+    query::Query,
+    FontProvider,
+};
 
 #[derive(Clone)]
 pub struct Text {
     pub text: String,
     pub font: Option<String>,
-    pub fontsize: Option<String>,
-    pub padding: Option<String>,
-    color: Option<String>,
-    bcolor: Option<String>,
-    pub italic: bool,
+    pub fontsize: f32,
+    pub padding: usize,
+    color: Color,
+    bcolor: Color,
     pub forceraw: bool,
     pub outline: bool,
     pub glyph_outline: bool,
@@ -21,6 +26,34 @@ pub struct Text {
 }
 
 impl Text {
+    pub async fn make_image(&self, fp: &Mutex<FontProvider>) -> Image {
+        let font = fp.lock().await.regular(self.font.clone());
+
+        let mut layout = Layout::new();
+        layout.append(font.as_ref(), self.fontsize, &self.text);
+
+        let width = layout.width().ceil() as usize + self.padding;
+        let height = layout.height().ceil() as usize + self.padding;
+        let mut image = Image::with_color(width, height, self.bcolor);
+
+        for glyph in layout.glyphs() {
+            let (metrics, raster) = font.rasterize(glyph.c, self.fontsize);
+            let glyph_img = Image::from_buffer(
+                metrics.width,
+                metrics.height,
+                raster,
+                Colors::GreyAsAlpha(self.color),
+            );
+            image.draw_img(
+                glyph_img,
+                glyph.x.ceil() as isize + self.padding as isize / 2,
+                glyph.y.ceil() as isize + self.padding as isize / 2,
+            )
+        }
+
+        image
+    }
+
     fn color<S: AsRef<str>>(s: S) -> Option<Color> {
         match s.as_ref() {
             "transparent" => return Some(Color::TRANSPARENT),
@@ -92,6 +125,14 @@ impl Text {
 
         None
     }
+
+    fn color_or<S: AsRef<str>>(string: Option<S>, color: Color) -> Color {
+        if let Some(string) = string {
+            Self::color(string).unwrap_or(color)
+        } else {
+            color
+        }
+    }
 }
 
 impl TryFrom<Query> for Text {
@@ -109,56 +150,30 @@ impl TryFrom<Query> for Text {
             None => return Err(TextError::NoText),
         };
 
+        let longshort = |long, short| query.get_first_value(long).or(query.get_first_value(short));
+
+        let fontsize = longshort("fontsize", "fs")
+            .map(|s| s.parse::<f32>().unwrap_or(128.0))
+            .unwrap_or(128.0);
+
+        let padding = query
+            .get_first_value("pad")
+            .map(|s| s.parse::<f32>().unwrap_or(-0.25))
+            .map(|f| if f < 0.0 { fontsize * -f } else { f })
+            .unwrap_or(fontsize * 0.25) as usize;
+
         Ok(Self {
             text,
             font: query.get_first_value("font"),
-            fontsize: query
-                .get_first_value("fontsize")
-                .or(query.get_first_value("fs")),
-            padding: query.get_first_value("pad"),
-            color: query
-                .get_first_value("color")
-                .or(query.get_first_value("c")),
-            bcolor: query
-                .get_first_value("bcolor")
-                .or(query.get_first_value("bc")),
-            italic: query.bool_present("italicize"),
+            fontsize,
+            padding,
+            color: Self::color_or(longshort("color", "c"), Color::WHITE),
+            bcolor: Self::color_or(longshort("bcolor", "bc"), Color::TRANSPARENT),
             forceraw: query.bool_present("forceraw"),
             outline: query.bool_present("outline"),
             glyph_outline: query.bool_present("glyph_outline"),
             baseline: query.bool_present("baseline"),
         })
-    }
-}
-
-impl Into<Settings> for Text {
-    fn into(self) -> Settings {
-        let font_size = self
-            .fontsize
-            .map(|s| s.parse::<f32>().unwrap_or(128.0))
-            .unwrap_or(128.0);
-
-        let padding = self
-            .padding
-            .map(|s| s.parse::<f32>().unwrap_or(-0.25))
-            .map(|f| if f < 0.0 { font_size * -f } else { f })
-            .unwrap_or(font_size * 0.25) as usize;
-
-        Settings {
-            font_size,
-            padding,
-            text_color: self
-                .color
-                .map(|s| Self::color(s).unwrap_or(Color::WHITE))
-                .unwrap_or(Color::WHITE),
-            background_color: self
-                .bcolor
-                .map(|s| Self::color(s).unwrap_or(Color::TRANSPARENT))
-                .unwrap_or(Color::TRANSPARENT),
-            draw_baseline: self.baseline,
-            draw_glyph_outline: self.glyph_outline,
-            draw_sentence_outline: self.outline,
-        }
     }
 }
 
