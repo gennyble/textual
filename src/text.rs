@@ -1,6 +1,6 @@
 use std::convert::TryFrom;
 
-use fontster::Layout;
+use fontster::{HorizontalAlign, Layout, LayoutSettings};
 use smol::lock::Mutex;
 use thiserror::Error;
 
@@ -17,8 +17,9 @@ pub struct Text {
     pub font: Option<String>,
     pub fontsize: f32,
     pub padding: usize,
-    color: Color,
+    pub color: Color,
     bcolor: Color,
+    align: HorizontalAlign,
     pub forceraw: bool,
     pub outline: bool,
     pub glyph_outline: bool,
@@ -26,10 +27,15 @@ pub struct Text {
 }
 
 impl Text {
+    //todo: special twitter image. aspect ratio 2:1
     pub async fn make_image(&self, fp: &Mutex<FontProvider>) -> Image {
         let font = fp.lock().await.regular(self.font.clone());
 
-        let mut layout = Layout::new();
+        let settings = LayoutSettings {
+            horizontal_align: self.align,
+        };
+
+        let mut layout = Layout::new(settings);
         layout.append(font.as_ref(), self.fontsize, &self.text);
 
         let width = layout.width().ceil() as usize + self.padding;
@@ -162,8 +168,15 @@ impl TryFrom<Query> for Text {
             .map(|f| if f < 0.0 { fontsize * -f } else { f })
             .unwrap_or(fontsize * 0.25) as usize;
 
+        let align = match query.get_first_value("align").as_deref() {
+            Some("center") => HorizontalAlign::Center,
+            Some("right") => HorizontalAlign::Right,
+            _ => HorizontalAlign::Left,
+        };
+
         Ok(Self {
             text,
+            align,
             font: query.get_first_value("font"),
             fontsize,
             padding,
