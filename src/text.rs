@@ -1,4 +1,4 @@
-use std::convert::TryFrom;
+use std::{convert::TryFrom, sync::Arc};
 
 use fontster::{HorizontalAlign, Layout, LayoutSettings};
 use smol::lock::Mutex;
@@ -6,12 +6,11 @@ use thiserror::Error;
 
 use crate::{
     color::Color,
-    image::{Colors, Image},
+    image::{ColorProvider, Colors, Image, Stripes},
     query::Query,
     FontProvider,
 };
 
-#[derive(Clone)]
 pub struct Text {
     pub text: String,
     pub font: Option<String>,
@@ -19,6 +18,7 @@ pub struct Text {
     pub padding: usize,
     pub color: Color,
     bcolor: Color,
+    pattern: Option<Arc<dyn ColorProvider>>,
     align: HorizontalAlign,
     pub forceraw: bool,
     pub outline: bool,
@@ -28,7 +28,7 @@ pub struct Text {
 
 impl Text {
     //todo: special twitter image. aspect ratio 2:1
-    pub async fn make_image(&self, fp: &Mutex<FontProvider>) -> Image {
+    pub async fn make_image(self, fp: &Mutex<FontProvider>) -> Image {
         let font = fp.lock().await.regular(self.font.clone());
 
         let settings = LayoutSettings {
@@ -44,12 +44,22 @@ impl Text {
 
         for glyph in layout.glyphs() {
             let (metrics, raster) = font.rasterize(glyph.c, self.fontsize);
-            let glyph_img = Image::from_buffer(
-                metrics.width,
-                metrics.height,
-                raster,
-                Colors::GreyAsAlpha(self.color),
-            );
+            let glyph_img = if let Some(pat) = &self.pattern {
+                Image::from_buffer(
+                    metrics.width,
+                    metrics.height,
+                    raster,
+                    Colors::GreyAsMask(pat.as_ref()),
+                )
+            } else {
+                Image::from_buffer(
+                    metrics.width,
+                    metrics.height,
+                    raster,
+                    Colors::GreyAsAlpha(self.color),
+                )
+            };
+
             image.draw_img(
                 glyph_img,
                 glyph.x.ceil() as isize + self.padding as isize / 2,
@@ -174,6 +184,26 @@ impl TryFrom<Query> for Text {
             _ => HorizontalAlign::Left,
         };
 
+        let pattern: Option<Arc<dyn ColorProvider>> =
+            match query.get_first_value("pattern").as_deref() {
+                Some("trans") => Some(Arc::new(Stripes {
+                    colors: vec![(85, 205, 252).into(), Color::WHITE, (247, 168, 184).into()],
+                    stripe_width: fontsize as usize / 8,
+                    slope: 2.0,
+                })),
+                Some("nonbinary") => Some(Arc::new(Stripes {
+                    colors: vec![
+                        (255, 244, 48).into(),
+                        Color::WHITE,
+                        (156, 89, 209).into(),
+                        Color::BLACK,
+                    ],
+                    stripe_width: fontsize as usize / 8,
+                    slope: 2.0,
+                })),
+                _ => None,
+            };
+
         Ok(Self {
             text,
             align,
@@ -182,6 +212,7 @@ impl TryFrom<Query> for Text {
             padding,
             color: Self::color_or(longshort("color", "c"), Color::WHITE),
             bcolor: Self::color_or(longshort("bcolor", "bc"), Color::TRANSPARENT),
+            pattern,
             forceraw: query.bool_present("forceraw"),
             outline: query.bool_present("outline"),
             glyph_outline: query.bool_present("glyph_outline"),
