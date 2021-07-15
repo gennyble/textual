@@ -1,11 +1,30 @@
 use crate::color::Color;
 
-#[derive(Debug, PartialEq)]
-pub enum Colors {
+pub trait ColorProvider: Send + Sync {
+    fn color_at(&self, x: usize, y: usize) -> Color;
+}
+
+pub struct Stripes {
+    pub colors: Vec<Color>,
+    pub stripe_width: usize,
+    pub slope: f32,
+}
+
+impl ColorProvider for Stripes {
+    fn color_at(&self, x: usize, y: usize) -> Color {
+        let color_index =
+            ((x + (y as f32 / self.slope) as usize) / self.stripe_width) % self.colors.len();
+
+        self.colors[color_index]
+    }
+}
+
+pub enum Colors<'a> {
     RGBA,
     RGB,
     Grey,
     GreyAsAlpha(Color),
+    GreyAsMask(&'a dyn ColorProvider),
 }
 
 pub struct Image {
@@ -31,7 +50,7 @@ impl Image {
 
     pub fn from_buffer(width: usize, height: usize, mut data: Vec<u8>, colors: Colors) -> Self {
         let expected_len = match colors {
-            Colors::Grey | Colors::GreyAsAlpha(_) => width * height,
+            Colors::Grey | Colors::GreyAsAlpha(_) | Colors::GreyAsMask(_) => width * height,
             Colors::RGB => width * height * 3,
             Colors::RGBA => width * height * 4,
         };
@@ -44,24 +63,37 @@ impl Image {
             );
         }
 
-        if let Colors::GreyAsAlpha(color) = colors {
-            let mut colordata = Vec::with_capacity(width * height * 4);
-            for byte in data.into_iter() {
-                colordata.extend_from_slice(&[color.r, color.g, color.b, byte]);
+        match colors {
+            Colors::Grey => {
+                let mut colordata = Vec::with_capacity(width * height * 4);
+                for byte in data.into_iter() {
+                    colordata.extend_from_slice(&[byte, byte, byte, byte]);
+                }
+                data = colordata;
             }
-            data = colordata;
-        } else if colors == Colors::Grey {
-            let mut colordata = Vec::with_capacity(width * height * 4);
-            for byte in data.into_iter() {
-                colordata.extend_from_slice(&[byte, byte, byte, byte]);
+            Colors::GreyAsAlpha(color) => {
+                let mut colordata = Vec::with_capacity(width * height * 4);
+                for byte in data.into_iter() {
+                    colordata.extend_from_slice(&[color.r, color.g, color.b, byte]);
+                }
+                data = colordata;
             }
-            data = colordata;
-        } else if colors == Colors::RGBA {
-            let mut colordata = Vec::with_capacity(width * height * 4);
-            for rgb in data.chunks(3) {
-                colordata.extend_from_slice(&[rgb[0], rgb[1], rgb[2], 255])
+            Colors::GreyAsMask(provider) => {
+                let mut colordata = Vec::with_capacity(width * height * 4);
+                for (index, byte) in data.into_iter().enumerate() {
+                    let color = provider.color_at(index % width, index / width);
+                    colordata.extend_from_slice(&[color.r, color.g, color.b, byte]);
+                }
+                data = colordata;
             }
-            data = colordata;
+            Colors::RGB => {
+                let mut colordata = Vec::with_capacity(width * height * 4);
+                for rgb in data.chunks(3) {
+                    colordata.extend_from_slice(&[rgb[0], rgb[1], rgb[2], 255])
+                }
+                data = colordata;
+            }
+            Colors::RGBA => (),
         }
 
         Self {
