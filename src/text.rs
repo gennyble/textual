@@ -1,7 +1,7 @@
-use std::{convert::TryFrom, sync::Arc};
+use std::{borrow::BorrowMut, convert::TryFrom, ops::DerefMut, sync::Arc};
 
 use fontster::{HorizontalAlign, Layout, LayoutSettings};
-use smol::lock::Mutex;
+use smol::lock::{Mutex, RwLock};
 use thiserror::Error;
 
 use crate::{
@@ -17,19 +17,43 @@ pub struct Text {
     pub fontsize: f32,
     pub padding: usize,
     pub color: Color,
-    bcolor: Color,
-    pattern: Option<Arc<dyn ColorProvider>>,
-    align: HorizontalAlign,
+    pub bcolor: Color,
+    pub pattern: Option<Arc<dyn ColorProvider>>,
+    pub align: HorizontalAlign,
     pub forceraw: bool,
     pub outline: bool,
     pub glyph_outline: bool,
     pub baseline: bool,
+    pub info: bool,
+}
+
+impl Default for Text {
+    fn default() -> Self {
+        Self {
+            text: String::new(),
+            font: None,
+            fontsize: 128.0,
+            padding: 32,
+            color: Color::WHITE,
+            bcolor: Color::TRANSPARENT,
+            pattern: None,
+            align: HorizontalAlign::Left,
+            forceraw: false,
+            outline: false,
+            glyph_outline: false,
+            baseline: false,
+            info: false,
+        }
+    }
 }
 
 impl Text {
     //todo: special twitter image. aspect ratio 2:1
-    pub async fn make_image(self, fp: &Mutex<FontProvider>) -> Image {
-        let font = fp.lock().await.regular(self.font.clone());
+    pub async fn make_image(self, fp: &RwLock<FontProvider>) -> Image {
+        let font = {
+            let mut provider = fp.write().await;
+            provider.regular(self.font.clone())
+        };
 
         let settings = LayoutSettings {
             horizontal_align: self.align,
@@ -217,6 +241,7 @@ impl TryFrom<Query> for Text {
             outline: query.bool_present("outline"),
             glyph_outline: query.bool_present("glyph_outline"),
             baseline: query.bool_present("baseline"),
+            info: query.bool_present("info"),
         })
     }
 }

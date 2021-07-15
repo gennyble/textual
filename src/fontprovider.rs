@@ -168,6 +168,10 @@ impl FontProvider {
         Ok(provider)
     }
 
+    pub fn cached(&self) -> usize {
+        self.font_cache.fonts.len()
+    }
+
     fn push(&mut self, fam: Family) {
         self.fonts.push(fam);
     }

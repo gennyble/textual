@@ -7,6 +7,7 @@ mod query;
 mod text;
 
 use std::{
+    cell::Cell,
     convert::TryInto,
     net::{TcpListener, TcpStream},
 };
@@ -16,7 +17,10 @@ use fontprovider::FontProvider;
 use query::QueryParseError;
 use serde::Serialize;
 use small_http::{Connection, ConnectionError, Response};
-use smol::{lock::Mutex, Async};
+use smol::{
+    lock::{Mutex, RwLock},
+    Async,
+};
 use std::sync::Arc;
 use text::{Text, TextError};
 use thiserror::Error;
@@ -24,30 +28,43 @@ use tinytemplate::TinyTemplate;
 
 use crate::query::Query;
 
-type Provider = Arc<Mutex<FontProvider>>;
+#[derive(Debug, Default)]
+struct Statistics {
+    image_bytes_sent: usize,
+    html_bytes_sent: usize,
+}
+
+struct Textual {
+    statistics: RwLock<Statistics>,
+    font_provider: RwLock<FontProvider>,
+}
 
 fn main() {
     let provider = FontProvider::google().unwrap();
+    let textual = Textual {
+        font_provider: RwLock::new(provider),
+        statistics: RwLock::new(Statistics::default()),
+    };
 
     let listener = Async::<TcpListener>::bind(([127, 0, 0, 1], 8080)).unwrap();
 
-    smol::block_on(listen(Arc::new(Mutex::new(provider)), listener))
+    smol::block_on(listen(Arc::new(textual), listener))
 }
 
-async fn listen(fp: Provider, listener: Async<TcpListener>) {
+async fn listen(textual: Arc<Textual>, listener: Async<TcpListener>) {
     loop {
         let (stream, clientaddr) = listener.accept().await.unwrap();
         println!("connection from {}", clientaddr);
 
-        let task = smol::spawn(error_handler(fp.clone(), stream));
+        let task = smol::spawn(error_handler(textual.clone(), stream));
         task.detach();
     }
 }
 
-async fn error_handler(provider: Provider, stream: Async<TcpStream>) {
+async fn error_handler(textual: Arc<Textual>, stream: Async<TcpStream>) {
     let mut connection = Connection::new(stream);
 
-    let response = match serve(provider, &mut connection).await {
+    let response = match serve(textual, &mut connection).await {
         Ok(resp) => resp,
         Err(e) => Response::builder()
             .header("content-type", "text/plain")
@@ -62,7 +79,7 @@ async fn error_handler(provider: Provider, stream: Async<TcpStream>) {
 }
 
 async fn serve(
-    provider: Arc<Mutex<FontProvider>>,
+    textual: Arc<Textual>,
     con: &mut Connection,
 ) -> Result<Response<Vec<u8>>, ServiceError> {
     let request = con.request().await?.unwrap();
@@ -74,7 +91,7 @@ async fn serve(
 
     println!("'{}'", query);
 
-    let text: Text = query.parse::<Query>()?.try_into()?;
+    let mut text: Text = query.parse::<Query>()?.try_into()?;
 
     let agent = request
         .headers()
@@ -88,11 +105,32 @@ async fn serve(
         request.uri().path_and_query().unwrap().to_string()
     );
 
+    let scheme = request.uri().scheme_str().unwrap_or("http");
+    let host = request.headers().get("host").unwrap().to_str().unwrap();
+
+    if text.info {
+        let stats = textual.statistics.read().await;
+        let provider = textual.font_provider.read().await;
+
+        text = Text {
+            text: format!(
+                "image bytes sent: {}\nhtml bytse sent: {}\nfonts in cache: {}",
+                bytes_to_human(stats.image_bytes_sent),
+                bytes_to_human(stats.html_bytes_sent),
+                provider.cached()
+            ),
+            forceraw: text.forceraw,
+            ..Default::default()
+        };
+    }
+
     if text.forceraw {
         // Image
-        Ok(make_image(provider, text).await?)
+        Ok(make_image(textual, text).await?)
     } else {
-        Ok(make_meta(query, text)?)
+        let link = format!("{}://{}?{}&forceraw", scheme, host, query);
+
+        Ok(make_meta(textual, text, link).await?)
     }
 }
 
@@ -106,11 +144,33 @@ fn serve_tool() -> Result<Response<Vec<u8>>, ConnectionError> {
         .map_err(|e| ConnectionError::UnknownError(e))
 }
 
+fn bytes_to_human(bytes: usize) -> String {
+    let mut bytes = bytes as f32;
+    let mut suffix = "B";
+
+    if bytes >= 1024.0 {
+        bytes /= 1024.0;
+        suffix = "KB";
+    }
+
+    if bytes >= 1024.0 {
+        bytes /= 1024.0;
+        suffix = "MB";
+    }
+
+    if bytes >= 1024.0 {
+        bytes /= 1024.0;
+        suffix = "GB";
+    }
+
+    format!("{} {}", (bytes * 10.0).ceil() / 10.0, suffix)
+}
+
 async fn make_image(
-    mut provider: Arc<Mutex<FontProvider>>,
+    textual: Arc<Textual>,
     text: Text,
 ) -> Result<Response<Vec<u8>>, ConnectionError> {
-    let image = text.make_image(&mut provider).await;
+    let image = text.make_image(&textual.font_provider).await;
 
     let mut encoded_buffer = vec![];
 
@@ -123,6 +183,11 @@ async fn make_image(
             crateimage::ColorType::Rgba8,
         )
         .unwrap();
+
+    {
+        let mut stats = textual.statistics.write().await;
+        stats.image_bytes_sent += encoded_buffer.len();
+    }
 
     Response::builder()
         .header("content-type", "image/png")
@@ -141,25 +206,28 @@ struct Meta {
     hex_color: String,
 }
 
-fn make_meta<S: AsRef<str>>(
-    query_string: S,
+async fn make_meta(
+    textual: Arc<Textual>,
     text: Text,
+    link: String,
 ) -> Result<Response<Vec<u8>>, ConnectionError> {
     let mut tt = TinyTemplate::new();
     tt.add_template("html", TEMPLATE).unwrap();
 
     let content = Meta {
-        text: text.text,
-        image_link: format!(
-            "https://textual.bookcase.name?{}&forceraw",
-            query_string.as_ref()
-        ),
-        font: text.font.unwrap_or("Cabin".into()),
+        text: text.text.clone(),
+        image_link: link,
+        font: text.font.clone().unwrap_or("Cabin".into()).clone(),
         hex_color: text.color.as_hex()[..6].into(),
     };
 
     let doc = tt.render("html", &content).unwrap();
     let buffer = doc.as_bytes().to_vec();
+
+    {
+        let mut stats = textual.statistics.write().await;
+        stats.image_bytes_sent += buffer.len();
+    }
 
     Response::builder()
         .header("content-type", "text/html")
