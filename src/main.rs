@@ -114,7 +114,7 @@ async fn serve(
 
         text = Text {
             text: format!(
-                "image bytes sent: {}\nhtml bytse sent: {}\nfonts in cache: {}",
+                "image sent: {}\nhtml sent: {}\nfonts in cache: {}",
                 bytes_to_human(stats.image_bytes_sent),
                 bytes_to_human(stats.html_bytes_sent),
                 provider.cached()
