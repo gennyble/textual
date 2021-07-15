@@ -211,22 +211,23 @@ async fn make_meta(
     text: Text,
     link: String,
 ) -> Result<Response<Vec<u8>>, ConnectionError> {
-    let mut tt = TinyTemplate::new();
-    tt.add_template("html", TEMPLATE).unwrap();
+    let buffer = {
+        let mut tt = TinyTemplate::new();
+        tt.add_template("html", TEMPLATE).unwrap();
 
-    let content = Meta {
-        text: text.text.clone(),
-        image_link: link,
-        font: text.font.clone().unwrap_or("Cabin".into()).clone(),
-        hex_color: text.color.as_hex()[..6].into(),
+        let content = Meta {
+            text: text.text.clone(),
+            image_link: link,
+            font: text.font.clone().unwrap_or("Cabin".into()).clone(),
+            hex_color: text.color.as_hex()[..6].into(),
+        };
+
+        tt.render("html", &content).unwrap().into_bytes()
     };
-
-    let doc = tt.render("html", &content).unwrap();
-    let buffer = doc.as_bytes().to_vec();
 
     {
         let mut stats = textual.statistics.write().await;
-        stats.image_bytes_sent += buffer.len();
+        stats.html_bytes_sent += buffer.len();
     }
 
     Response::builder()
