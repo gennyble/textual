@@ -46,9 +46,13 @@ impl FontCache {
         None
     }
 
-    fn get_regular<S: AsRef<str>>(&self, fam: S) -> Option<Font> {
-        if let Some(fam) = self.family(fam) {
-            if let Some(path) = fam.varient("regular") {
+    fn regular<S: AsRef<str>>(&self, fam: S) -> Option<Font> {
+        self.varient(fam, "regular")
+    }
+
+    pub fn varient<F: AsRef<str>, V: AsRef<str>>(&self, family: F, varient: V) -> Option<Font> {
+        if let Some(fam) = self.family(family.as_ref()) {
+            if let Some(path) = fam.varient(varient.as_ref()) {
                 let mut file = File::open(path).unwrap();
 
                 let mut buffer = vec![];
@@ -186,27 +190,45 @@ impl FontProvider {
         None
     }
 
-    pub fn regular<S: AsRef<str>>(&mut self, fam: Option<S>) -> Arc<Font> {
-        if let Some(fam) = fam {
-            let fam = fam.as_ref();
+    pub fn varient<F: AsRef<str>, V: AsRef<str>>(&mut self, family: F, varient: V) -> Arc<Font> {
+        if let Some(font) = self.font_cache.varient(family.as_ref(), varient.as_ref()) {
+            println!(
+                "hit cache for {} varient {}",
+                family.as_ref(),
+                varient.as_ref()
+            );
 
-            if let Some(font) = self.font_cache.get_regular(fam) {
-                println!("hit cache for {}", fam);
-                return Arc::new(font);
-            } else if let Some(family) = self.family(fam) {
-                println!("missed cache for {}", fam);
+            return Arc::new(font);
+        } else if self.family(family.as_ref()).is_some() {
+            println!(
+                "missed cache for {} varient {}",
+                family.as_ref(),
+                varient.as_ref()
+            );
 
-                let regular = family.varient("regular").unwrap();
-                let response = ureq::get(regular).call().unwrap();
+            if let Some(var) = self
+                .family(family.as_ref())
+                .unwrap()
+                .varient(varient.as_ref())
+                .map(|s| s.to_owned())
+            {
+                let response = ureq::get(&var).call().unwrap();
                 let mut buffer: Vec<u8> = Vec::new();
                 response.into_reader().read_to_end(&mut buffer).unwrap();
-
-                self.font_cache.save_font(fam, "regular", &buffer);
+                self.font_cache.save_font(family, varient, &buffer);
 
                 return Arc::new(fontster::parse_font(&buffer).unwrap());
             }
         }
 
+        self.default.clone()
+    }
+
+    pub fn regular<S: AsRef<str>>(&mut self, fam: S) -> Arc<Font> {
+        self.varient(fam, "regular")
+    }
+
+    pub fn default_font(&self) -> Arc<Font> {
         self.default.clone()
     }
 }
