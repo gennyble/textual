@@ -218,8 +218,8 @@ async fn make_meta(
 
         let content = Meta {
             text: text.text.clone(),
-            twitter_image: format!("{}&aspect=2", link),
-            og_image: format!("{}&aspect=2", link),
+            twitter_image: format!("{}&aspect=1.8", link),
+            og_image: format!("{}&aspect=1.8", link),
             image: link,
             font: text.font.clone().unwrap_or("Cabin".into()).clone(),
             hex_color: text.color.as_hex()[..6].into(),

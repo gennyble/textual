@@ -69,7 +69,9 @@ impl Text {
             println!("{} {}", current_ratio, ratio);
             if ratio > current_ratio {
                 // we're too tall! pad the width.
-                let needed_padding = ((layout.height() * ratio) - layout.width()).ceil() as usize;
+                let needed_padding = (((layout.height() + self.padding as f32) * ratio)
+                    - layout.width())
+                .ceil() as usize;
 
                 if needed_padding < self.padding {
                     // the added padding is less than the desired. We can't set
@@ -80,7 +82,9 @@ impl Text {
                 }
             } else if ratio < current_ratio {
                 // we're too wide! pad the height
-                let needed_padding = ((layout.width() / ratio) - layout.height()).ceil() as usize;
+                let needed_padding = (((layout.width() + self.padding as f32) / ratio)
+                    - layout.height())
+                .ceil() as usize;
 
                 if needed_padding < self.padding {
                     (needed_padding - self.padding, needed_padding)
