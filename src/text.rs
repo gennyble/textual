@@ -21,6 +21,7 @@ pub struct Text {
     pub pattern: Option<Arc<dyn ColorProvider>>,
     pub align: HorizontalAlign,
     pub forceraw: bool,
+    pub aspect: Option<f32>,
     pub outline: bool,
     pub glyph_outline: bool,
     pub baseline: bool,
@@ -39,6 +40,7 @@ impl Default for Text {
             pattern: None,
             align: HorizontalAlign::Left,
             forceraw: false,
+            aspect: None,
             outline: false,
             glyph_outline: false,
             baseline: false,
@@ -62,8 +64,39 @@ impl Text {
         let mut layout = Layout::new(settings);
         layout.append(font.as_ref(), self.fontsize, &self.text);
 
-        let width = layout.width().ceil() as usize + self.padding;
-        let height = layout.height().ceil() as usize + self.padding;
+        let (horizontal_pad, vertical_pad) = if let Some(ratio) = self.aspect {
+            let current_ratio = layout.width() / layout.height();
+            println!("{} {}", current_ratio, ratio);
+            if ratio > current_ratio {
+                // we're too tall! pad the width.
+                let needed_padding = ((layout.height() * ratio) - layout.width()).ceil() as usize;
+
+                if needed_padding < self.padding {
+                    // the added padding is less than the desired. We can't set
+                    // the needed to the desired our we'd overshoot
+                    (needed_padding, needed_padding - self.padding)
+                } else {
+                    (needed_padding, self.padding)
+                }
+            } else if ratio < current_ratio {
+                // we're too wide! pad the height
+                let needed_padding = ((layout.width() / ratio) - layout.height()).ceil() as usize;
+
+                if needed_padding < self.padding {
+                    (needed_padding - self.padding, needed_padding)
+                } else {
+                    (self.padding, needed_padding)
+                }
+            } else {
+                (self.padding, self.padding)
+            }
+        } else {
+            (self.padding, self.padding)
+        };
+        println!("{} {}", horizontal_pad, vertical_pad);
+
+        let width = layout.width().ceil() as usize + horizontal_pad;
+        let height = layout.height().ceil() as usize + vertical_pad;
         let mut image = Image::with_color(width, height, self.bcolor);
 
         let text_image = if self.pattern.is_some() {
@@ -74,8 +107,8 @@ impl Text {
 
         image.draw_img(
             text_image,
-            self.padding as isize / 2,
-            self.padding as isize / 2,
+            horizontal_pad as isize / 2,
+            vertical_pad as isize / 2,
         );
 
         image
@@ -258,6 +291,11 @@ impl TryFrom<Query> for Text {
                 _ => None,
             };
 
+        let aspect = query
+            .get_first_value("aspect")
+            .map(|s| s.parse::<f32>().ok())
+            .flatten();
+
         Ok(Self {
             text,
             align,
@@ -268,6 +306,7 @@ impl TryFrom<Query> for Text {
             bcolor: Self::color_or(longshort("bcolor", "bc"), Color::TRANSPARENT),
             pattern,
             forceraw: query.has_bool("forceraw"),
+            aspect,
             outline: query.has_bool("outline"),
             glyph_outline: query.has_bool("glyph_outline"),
             baseline: query.has_bool("baseline"),

@@ -200,7 +200,9 @@ static TEMPLATE: &'static str = include_str!("template.htm");
 #[derive(Debug, Serialize)]
 struct Meta {
     text: String,
-    image_link: String,
+    twitter_image: String,
+    og_image: String,
+    image: String,
     font: String,
     hex_color: String,
 }
@@ -216,7 +218,9 @@ async fn make_meta(
 
         let content = Meta {
             text: text.text.clone(),
-            image_link: link,
+            twitter_image: format!("{}&aspect=2", link),
+            og_image: format!("{}&aspect=2", link),
+            image: link,
             font: text.font.clone().unwrap_or("Cabin".into()).clone(),
             hex_color: text.color.as_hex()[..6].into(),
         };
