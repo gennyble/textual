@@ -7,11 +7,11 @@ can style it in fun ways, but want to remain accessible? Textual can help you!
 The URL below will provide the image, also shown below.  
 https://textual.bookcase.name/?text=Textual&font=Righteous&color=155
 
-<center>
+<div style="width: 100%; display: flex; justify-content: center; align-items: center; text-align: center;">
 
 ![Text, in the font Righteous, reading "Textual"](https://textual.bookcase.name/?text=Textual&font=Righteous&color=155&forceraw)
 
-</center>
+</div>
 
 ## How's it work?
 Textual is something I made when I wanted to play with text rendering. It uses
