@@ -14,6 +14,7 @@ use crate::{
 pub struct Text {
     pub text: String,
     pub font: Option<String>,
+    pub varient: Option<String>,
     pub fontsize: f32,
     pub padding: usize,
     pub color: Color,
@@ -33,6 +34,7 @@ impl Default for Text {
         Self {
             text: String::new(),
             font: None,
+            varient: None,
             fontsize: 128.0,
             padding: 32,
             color: Color::WHITE,
@@ -52,10 +54,7 @@ impl Default for Text {
 impl Text {
     //todo: special twitter image. aspect ratio 2:1
     pub async fn make_image(self, fp: &RwLock<FontProvider>) -> Image {
-        let font = {
-            let mut provider = fp.write().await;
-            provider.regular(self.font.clone())
-        };
+        let font = self.get_font(fp).await;
 
         let settings = LayoutSettings {
             horizontal_align: self.align,
@@ -66,7 +65,7 @@ impl Text {
 
         let (horizontal_pad, vertical_pad) = if let Some(ratio) = self.aspect {
             let current_ratio = layout.width() / layout.height();
-            println!("{} {}", current_ratio, ratio);
+
             if ratio > current_ratio {
                 // we're too tall! pad the width.
                 let needed_padding = (((layout.height() + self.padding as f32) * ratio)
@@ -97,7 +96,6 @@ impl Text {
         } else {
             (self.padding, self.padding)
         };
-        println!("{} {}", horizontal_pad, vertical_pad);
 
         let width = layout.width().ceil() as usize + horizontal_pad;
         let height = layout.height().ceil() as usize + vertical_pad;
@@ -159,6 +157,18 @@ impl Text {
         }
 
         image
+    }
+
+    async fn get_font(&self, fp: &RwLock<FontProvider>) -> Arc<Font> {
+        if let Some(font) = self.font.as_deref() {
+            let varient = self.varient.as_deref().unwrap_or("regular");
+            return {
+                let mut provider = fp.write().await;
+                provider.varient(font, varient)
+            };
+        }
+
+        fp.read().await.default_font()
     }
 
     fn color<S: AsRef<str>>(s: S) -> Option<Color> {
@@ -304,6 +314,7 @@ impl TryFrom<Query> for Text {
             text,
             align,
             font: query.get_first_value("font").map(|s| s.into()),
+            varient: query.get_first_value("varient").map(|s| s.into()),
             fontsize,
             padding,
             color: Self::color_or(longshort("color", "c"), Color::WHITE),
