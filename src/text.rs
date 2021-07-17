@@ -1,13 +1,13 @@
 use std::{borrow::BorrowMut, convert::TryFrom, ops::DerefMut, sync::Arc};
 
-use fontster::{HorizontalAlign, Layout, LayoutSettings};
+use fontster::{Font, HorizontalAlign, Layout, LayoutSettings};
+use small_http::Query;
 use smol::lock::{Mutex, RwLock};
 use thiserror::Error;
 
 use crate::{
     color::Color,
-    image::{ColorProvider, Colors, Image, Stripes},
-    query::Query,
+    image::{ColorProvider, Colors, Image, Mask, Stripes},
     FontProvider,
 };
 
@@ -66,29 +66,59 @@ impl Text {
         let height = layout.height().ceil() as usize + self.padding;
         let mut image = Image::with_color(width, height, self.bcolor);
 
+        let text_image = if self.pattern.is_some() {
+            self.pattern_image(font.as_ref(), layout)
+        } else {
+            self.normal_image(font.as_ref(), layout)
+        };
+
+        image.draw_img(
+            text_image,
+            self.padding as isize / 2,
+            self.padding as isize / 2,
+        );
+
+        image
+    }
+
+    fn pattern_image(&self, font: &Font, layout: Layout) -> Image {
+        let width = layout.width().ceil() as usize;
+        let height = layout.height().ceil() as usize;
+
+        let mut mask = Mask::new(width, height);
         for glyph in layout.glyphs() {
             let (metrics, raster) = font.rasterize(glyph.c, self.fontsize);
-            let glyph_img = if let Some(pat) = &self.pattern {
-                Image::from_buffer(
-                    metrics.width,
-                    metrics.height,
-                    raster,
-                    Colors::GreyAsMask(pat.as_ref()),
-                )
-            } else {
-                Image::from_buffer(
-                    metrics.width,
-                    metrics.height,
-                    raster,
-                    Colors::GreyAsAlpha(self.color),
-                )
-            };
 
-            image.draw_img(
-                glyph_img,
-                glyph.x.ceil() as isize + self.padding as isize / 2,
-                glyph.y.ceil() as isize + self.padding as isize / 2,
+            mask.set_from_buf(
+                metrics.width,
+                metrics.height,
+                &raster,
+                glyph.x.ceil() as isize,
+                glyph.y.ceil() as isize,
             )
+        }
+
+        let mut pattern = Image::from_provider(width, height, self.pattern.as_deref().unwrap());
+        pattern.mask(mask, 0, 0);
+
+        pattern
+    }
+
+    fn normal_image(&self, font: &Font, layout: Layout) -> Image {
+        let width = layout.width().ceil() as usize;
+        let height = layout.height().ceil() as usize;
+        let mut image = Image::with_color(width, height, Color::TRANSPARENT);
+
+        for glyph in layout.glyphs() {
+            let (metrics, raster) = font.rasterize(glyph.c, self.fontsize);
+            let glyph_img = Image::from_buffer(
+                metrics.width,
+                metrics.height,
+                raster,
+                Colors::GreyAsAlpha(self.color),
+            );
+
+            image.draw_img(glyph_img, glyph.x.ceil() as isize, glyph.y.ceil() as isize)
         }
 
         image
@@ -184,7 +214,7 @@ impl TryFrom<Query> for Text {
                 if t.is_empty() {
                     return Err(TextError::NoText);
                 } else {
-                    t
+                    t.into()
                 }
             }
             None => return Err(TextError::NoText),
@@ -231,17 +261,17 @@ impl TryFrom<Query> for Text {
         Ok(Self {
             text,
             align,
-            font: query.get_first_value("font"),
+            font: query.get_first_value("font").map(|s| s.into()),
             fontsize,
             padding,
             color: Self::color_or(longshort("color", "c"), Color::WHITE),
             bcolor: Self::color_or(longshort("bcolor", "bc"), Color::TRANSPARENT),
             pattern,
-            forceraw: query.bool_present("forceraw"),
-            outline: query.bool_present("outline"),
-            glyph_outline: query.bool_present("glyph_outline"),
-            baseline: query.bool_present("baseline"),
-            info: query.bool_present("info"),
+            forceraw: query.has_bool("forceraw"),
+            outline: query.has_bool("outline"),
+            glyph_outline: query.has_bool("glyph_outline"),
+            baseline: query.has_bool("baseline"),
+            info: query.has_bool("info"),
         })
     }
 }

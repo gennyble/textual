@@ -3,20 +3,19 @@ extern crate image as crateimage;
 mod color;
 mod fontprovider;
 mod image;
-mod query;
 mod text;
 
 use std::{
     cell::Cell,
     convert::TryInto,
     net::{TcpListener, TcpStream},
+    time::Instant,
 };
 
 use crateimage::png::PngEncoder;
 use fontprovider::FontProvider;
-use query::QueryParseError;
 use serde::Serialize;
-use small_http::{Connection, ConnectionError, Response};
+use small_http::{Connection, ConnectionError, Query, QueryParseError, Response};
 use smol::{
     lock::{Mutex, RwLock},
     Async,
@@ -25,8 +24,6 @@ use std::sync::Arc;
 use text::{Text, TextError};
 use thiserror::Error;
 use tinytemplate::TinyTemplate;
-
-use crate::query::Query;
 
 #[derive(Debug, Default)]
 struct Statistics {
@@ -54,8 +51,6 @@ fn main() {
 async fn listen(textual: Arc<Textual>, listener: Async<TcpListener>) {
     loop {
         let (stream, clientaddr) = listener.accept().await.unwrap();
-        println!("connection from {}", clientaddr);
-
         let task = smol::spawn(error_handler(textual.clone(), stream));
         task.detach();
     }
@@ -84,14 +79,29 @@ async fn serve(
 ) -> Result<Response<Vec<u8>>, ServiceError> {
     let request = con.request().await?.unwrap();
 
-    let query = match request.uri().query() {
+    let query_str = match request.uri().query() {
         Some(query_str) => query_str,
         None => return Ok(serve_tool()?),
     };
 
-    println!("'{}'", query);
-
-    let mut text: Text = query.parse::<Query>()?.try_into()?;
+    let query: Query = query_str.parse()?;
+    println!("{} {}", query.has_bool("info"), query.has_bool("forceraw"));
+    let text: Text = if query.has_bool("info") && !query.has_bool("forceraw") {
+        let stats = textual.statistics.read().await;
+        let provider = textual.font_provider.read().await;
+        println!("in");
+        Text {
+            text: format!(
+                "image sent: {}\nhtml sent: {}\nfonts in cache: {}",
+                bytes_to_human(stats.image_bytes_sent),
+                bytes_to_human(stats.html_bytes_sent),
+                provider.cached()
+            ),
+            ..Default::default()
+        }
+    } else {
+        query.try_into()?
+    };
 
     let agent = request
         .headers()
@@ -100,7 +110,12 @@ async fn serve(
         .to_str()
         .unwrap();
     println!(
-        "ua: {}\n\tpath: {}",
+        "connection: {}\n\tua: {}\n\tpath: {}",
+        request
+            .headers()
+            .get("X-Forwarded-For")
+            .map(|h| h.to_str().unwrap_or("unknown"))
+            .unwrap_or("unknown"),
         agent,
         request.uri().path_and_query().unwrap().to_string()
     );
@@ -108,27 +123,11 @@ async fn serve(
     let scheme = request.uri().scheme_str().unwrap_or("http");
     let host = request.headers().get("host").unwrap().to_str().unwrap();
 
-    if text.info {
-        let stats = textual.statistics.read().await;
-        let provider = textual.font_provider.read().await;
-
-        text = Text {
-            text: format!(
-                "image sent: {}\nhtml sent: {}\nfonts in cache: {}",
-                bytes_to_human(stats.image_bytes_sent),
-                bytes_to_human(stats.html_bytes_sent),
-                provider.cached()
-            ),
-            forceraw: text.forceraw,
-            ..Default::default()
-        };
-    }
-
     if text.forceraw {
         // Image
         Ok(make_image(textual, text).await?)
     } else {
-        let link = format!("{}://{}?{}&forceraw", scheme, host, query);
+        let link = format!("{}://{}?{}&forceraw", scheme, host, query_str);
 
         Ok(make_meta(textual, text, link).await?)
     }
