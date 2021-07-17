@@ -5,13 +5,13 @@ Ever want to say something, but bigger? Want to post an image of text, so you
 can style it in fun ways, but want to remain accessible? Textual can help you!
 
 The URL below will provide the image, also shown below.  
-https://textual.bookcase.name/?text=Textual&font=Righteous&color=155
+https://textual.bookcase.name/?text=Textual%21&font=Righteous&color=155
 
-<div style="width: 100%; display: flex; justify-content: center; align-items: center; text-align: center;">
+<p align="center" style="width: 100%">
 
-![Text, in the font Righteous, reading "Textual"](https://textual.bookcase.name/?text=Textual&font=Righteous&color=155&forceraw)
+<img src="https://textual.bookcase.name/?text=Textual%21&font=Righteous&color=155&forceraw" alt="Text, in the font Righteous, reading 'Textual!'">
 
-</div>
+</p>
 
 ## How's it work?
 Textual is something I made when I wanted to play with text rendering. It uses
