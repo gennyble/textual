@@ -79,30 +79,27 @@ async fn serve(
 ) -> Result<Response<Vec<u8>>, ServiceError> {
     let request = con.request().await?.unwrap();
 
-    let query_str = match request.uri().query() {
-        Some(query_str) => query_str,
+    let mut query_str = match request.uri().query() {
+        Some(query_str) => query_str.to_owned(),
         None => return Ok(serve_tool()?),
     };
 
     let query: Query = query_str.parse()?;
-    println!("{} {}", query.has_bool("info"), query.has_bool("forceraw"));
-    let text: Operation = if query.has_bool("info") && !query.has_bool("forceraw") {
+
+    if query.has_bool("info") && !query.has_bool("forceraw") {
         let stats = textual.statistics.read().await;
         let provider = textual.font_provider.read().await;
-        println!("in");
-        panic!();
-        /*Text {
-            text: format!(
-                "image sent: {}\nhtml sent: {}\nfonts in cache: {}",
-                bytes_to_human(stats.image_bytes_sent),
-                bytes_to_human(stats.html_bytes_sent),
-                provider.cached()
-            ),
-            ..Default::default()
-        }*/
-    } else {
-        query.into()
+        let text = format!(
+            "image sent: {}\nhtml sent: {}\nfonts in cache: {}",
+            bytes_to_human(stats.image_bytes_sent),
+            bytes_to_human(stats.html_bytes_sent),
+            provider.cached()
+        );
+
+        query_str = format!("text={}&fs=16&c=black&bc=eed", Query::url_encode(&text));
     };
+
+    let text: Operation = query.into();
 
     let agent = request
         .headers()
@@ -110,6 +107,7 @@ async fn serve(
         .unwrap()
         .to_str()
         .unwrap();
+
     println!(
         "connection: {}\n\tua: {}\n\tpath: {}",
         request
