@@ -1,7 +1,7 @@
 use std::{borrow::BorrowMut, convert::TryFrom, ops::DerefMut, sync::Arc};
 
-use fontster::{Font, HorizontalAlign, Layout, LayoutSettings};
-use small_http::Query;
+use fontster::{Font, GlyphPosition, HorizontalAlign, Layout, LayoutSettings, StyledText};
+use small_http::{Parameter, Query};
 use smol::lock::{Mutex, RwLock};
 use thiserror::Error;
 
@@ -11,22 +11,26 @@ use crate::{
     FontProvider,
 };
 
+#[derive(Clone)]
+pub enum Visual {
+    Color(Color),
+    Pattern(Arc<dyn ColorProvider>),
+}
+
+impl From<Color> for Visual {
+    fn from(c: Color) -> Self {
+        Self::Color(c)
+    }
+}
+
+#[derive(Clone)]
 pub struct Text {
     pub text: String,
     pub font: Option<String>,
     pub varient: Option<String>,
     pub fontsize: f32,
-    pub padding: usize,
-    pub color: Color,
-    pub bcolor: Color,
-    pub pattern: Option<Arc<dyn ColorProvider>>,
-    pub align: HorizontalAlign,
-    pub forceraw: bool,
-    pub aspect: Option<f32>,
-    pub outline: bool,
-    pub glyph_outline: bool,
-    pub baseline: bool,
-    pub info: bool,
+
+    pub visual: Visual,
 }
 
 impl Default for Text {
@@ -36,10 +40,58 @@ impl Default for Text {
             font: None,
             varient: None,
             fontsize: 128.0,
+
+            visual: Color::WHITE.into(),
+        }
+    }
+}
+
+impl Text {
+    async fn get_font(&self, fp: &RwLock<FontProvider>) -> Arc<Font> {
+        if let Some(font) = self.font.as_deref() {
+            let varient = self.varient.as_deref().unwrap_or("regular");
+            return {
+                let mut provider = fp.write().await;
+                provider.varient(font, varient)
+            };
+        }
+
+        fp.read().await.default_font()
+    }
+}
+
+#[derive(Clone, PartialEq)]
+struct FontFace {
+    typeface: String,
+    varient: String,
+}
+
+impl FontFace {
+    pub fn new(typeface: String, varient: String) -> Self {
+        Self { typeface, varient }
+    }
+}
+
+#[derive(Clone)]
+pub struct Operation {
+    pub bvisual: Visual,
+    pub texts: Vec<Text>,
+    pub padding: usize,
+    pub align: HorizontalAlign,
+    pub forceraw: bool,
+    pub aspect: Option<f32>,
+    pub outline: bool,
+    pub glyph_outline: bool,
+    pub baseline: bool,
+    pub info: bool,
+}
+
+impl Default for Operation {
+    fn default() -> Self {
+        Self {
+            bvisual: Color::TRANSPARENT.into(),
+            texts: vec![Text::default()],
             padding: 32,
-            color: Color::WHITE,
-            bcolor: Color::TRANSPARENT,
-            pattern: None,
             align: HorizontalAlign::Left,
             forceraw: false,
             aspect: None,
@@ -51,17 +103,54 @@ impl Default for Text {
     }
 }
 
-impl Text {
-    //todo: special twitter image. aspect ratio 2:1
+impl Operation {
     pub async fn make_image(self, fp: &RwLock<FontProvider>) -> Image {
-        let font = self.get_font(fp).await;
+        let mut fonts: Vec<(FontFace, Arc<Font>)> = vec![];
 
         let settings = LayoutSettings {
             horizontal_align: self.align,
         };
 
         let mut layout = Layout::new(settings);
-        layout.append(font.as_ref(), self.fontsize, &self.text);
+        for text in &self.texts {
+            let fontface = FontFace::new(
+                text.font.clone().unwrap_or_default(),
+                text.varient.clone().unwrap_or("regular".into()),
+            );
+
+            let index = match fonts
+                .iter()
+                .enumerate()
+                .filter_map(|(index, (vecface, vecfont))| {
+                    if vecface == &fontface {
+                        Some(index)
+                    } else {
+                        None
+                    }
+                })
+                .next()
+            {
+                Some(i) => i,
+                None => {
+                    fonts.push((fontface, text.get_font(fp).await));
+
+                    fonts.len() - 1
+                }
+            };
+
+            layout.append(
+                &fonts
+                    .iter()
+                    .map(|(face, font)| font.clone())
+                    .collect::<Vec<Arc<Font>>>(),
+                StyledText {
+                    text: text.text.as_str(),
+                    font_size: text.fontsize,
+                    font_index: index,
+                    user: text.visual.clone(),
+                },
+            );
+        }
 
         let (horizontal_pad, vertical_pad) = if let Some(ratio) = self.aspect {
             let current_ratio = layout.width() / layout.height();
@@ -97,78 +186,70 @@ impl Text {
             (self.padding, self.padding)
         };
 
+        let fonts: Vec<Arc<Font>> = fonts.iter().map(|t| t.1.clone()).collect();
         let width = layout.width().ceil() as usize + horizontal_pad;
         let height = layout.height().ceil() as usize + vertical_pad;
-        let mut image = Image::with_color(width, height, self.bcolor);
-
-        let text_image = if self.pattern.is_some() {
-            self.pattern_image(font.as_ref(), layout)
-        } else {
-            self.normal_image(font.as_ref(), layout)
+        let mut image = match &self.bvisual {
+            Visual::Color(c) => Image::with_color(width, height, *c),
+            Visual::Pattern(p) => Image::from_provider(width, height, 0, 0, p.as_ref()),
         };
 
-        image.draw_img(
-            text_image,
-            horizontal_pad as isize / 2,
-            vertical_pad as isize / 2,
-        );
-
-        image
-    }
-
-    fn pattern_image(&self, font: &Font, layout: Layout) -> Image {
-        let width = layout.width().ceil() as usize;
-        let height = layout.height().ceil() as usize;
-
-        let mut mask = Mask::new(width, height);
+        let off_x = horizontal_pad as isize / 2;
+        let off_y = vertical_pad as isize / 2;
         for glyph in layout.glyphs() {
-            let (metrics, raster) = font.rasterize(glyph.c, self.fontsize);
+            let x = glyph.x as isize + off_x;
+            let y = glyph.y as isize + off_y;
 
-            mask.set_from_buf(
-                metrics.width,
-                metrics.height,
-                &raster,
-                glyph.x.ceil() as isize,
-                glyph.y.ceil() as isize,
-            )
-        }
-
-        let mut pattern = Image::from_provider(width, height, self.pattern.as_deref().unwrap());
-        pattern.mask(mask, 0, 0);
-
-        pattern
-    }
-
-    fn normal_image(&self, font: &Font, layout: Layout) -> Image {
-        let width = layout.width().ceil() as usize;
-        let height = layout.height().ceil() as usize;
-        let mut image = Image::with_color(width, height, Color::TRANSPARENT);
-
-        for glyph in layout.glyphs() {
-            let (metrics, raster) = font.rasterize(glyph.c, self.fontsize);
-            let glyph_img = Image::from_buffer(
-                metrics.width,
-                metrics.height,
-                raster,
-                Colors::GreyAsAlpha(self.color),
-            );
-
-            image.draw_img(glyph_img, glyph.x.ceil() as isize, glyph.y.ceil() as isize)
+            let glyph = self.glyph(&fonts, glyph, off_x, off_y);
+            image.draw_img(glyph, x, y);
         }
 
         image
     }
 
-    async fn get_font(&self, fp: &RwLock<FontProvider>) -> Arc<Font> {
-        if let Some(font) = self.font.as_deref() {
-            let varient = self.varient.as_deref().unwrap_or("regular");
-            return {
-                let mut provider = fp.write().await;
-                provider.varient(font, varient)
-            };
+    pub fn full_text(&self) -> String {
+        let mut ret = String::new();
+        for text in &self.texts {
+            ret.push_str(&text.text);
         }
+        ret
+    }
 
-        fp.read().await.default_font()
+    //todo: pass glyph an offset so we can align the pattern
+    fn glyph(
+        &self,
+        fonts: &[Arc<Font>],
+        glyph: GlyphPosition<Visual>,
+        off_x: isize,
+        off_y: isize,
+    ) -> Image {
+        let font = &fonts[glyph.font_index];
+        let (metrics, raster) = font.rasterize(glyph.c, glyph.font_size);
+
+        match glyph.user {
+            Visual::Color(c) => {
+                println!("{:?}", c);
+                Image::from_buffer(
+                    metrics.width,
+                    metrics.height,
+                    raster,
+                    Colors::GreyAsAlpha(c),
+                )
+            }
+            Visual::Pattern(arcpat) => {
+                let mut mask = Mask::new(metrics.width, metrics.height);
+                let x = glyph.x.ceil() as isize + off_x;
+                let y = glyph.y.ceil() as isize + off_y;
+
+                mask.set_from_buf(metrics.width, metrics.height, &raster, 0, 0);
+
+                let mut pattern =
+                    Image::from_provider(metrics.width, metrics.height, x, y, arcpat.as_ref());
+                pattern.mask(mask, 0, 0);
+
+                pattern
+            }
+        }
     }
 
     fn color<S: AsRef<str>>(s: S) -> Option<Color> {
@@ -250,88 +331,96 @@ impl Text {
             color
         }
     }
-}
 
-impl TryFrom<Query> for Text {
-    type Error = TextError;
+    fn pattern<P: AsRef<str>>(string: P) -> Option<Visual> {
+        match string.as_ref() {
+            "trans" => Some(Visual::Pattern(Arc::new(Stripes {
+                colors: vec![(85, 205, 252).into(), Color::WHITE, (247, 168, 184).into()],
+                stripe_width: 16,
+                slope: 2.0,
+            }))),
+            "nonbinary" => Some(Visual::Pattern(Arc::new(Stripes {
+                colors: vec![
+                    (255, 244, 48).into(),
+                    Color::WHITE,
+                    (156, 89, 209).into(),
+                    Color::BLACK,
+                ],
+                stripe_width: 16,
+                slope: 2.0,
+            }))),
+            _ => None,
+        }
+    }
 
-    fn try_from(query: Query) -> Result<Self, Self::Error> {
-        let text = match query.get_first_value("text") {
-            Some(t) => {
-                if t.is_empty() {
-                    return Err(TextError::NoText);
+    fn push_parameter(&mut self, parameter: Parameter) {
+        match parameter {
+            Parameter::Bool(name) => self.parse_bool(name),
+            Parameter::Value(key, value) => self.parse_value(key, value),
+        }
+    }
+
+    fn parse_bool<S: AsRef<str>>(&mut self, name: S) {
+        match name.as_ref() {
+            "forceraw" => self.forceraw = true,
+            _ => (),
+        }
+    }
+
+    fn parse_value(&mut self, key: String, value: String) {
+        let current = self.texts.last_mut().unwrap();
+
+        match key.as_str() {
+            "text" => {
+                if current.text.is_empty() {
+                    self.texts[0].text = value;
+                    return;
                 } else {
-                    t.into()
+                    let mut next = current.clone();
+                    next.text = value;
+
+                    self.texts.push(next);
                 }
             }
-            None => return Err(TextError::NoText),
-        };
+            "font" => current.font = Some(value),
+            "varient" => current.varient = Some(value),
+            "fs" | "fontsize" => current.fontsize = value.parse().unwrap_or(128.0),
+            "c" | "color" => {
+                current.visual = Visual::Color(Self::color_or(Some(value), Color::WHITE))
+            }
+            "pattern" => {
+                if let Some(pat) = Self::pattern(value) {
+                    current.visual = pat;
+                }
+            }
 
-        let longshort = |long, short| query.get_first_value(long).or(query.get_first_value(short));
-
-        let fontsize = longshort("fontsize", "fs")
-            .map(|s| s.parse::<f32>().unwrap_or(128.0))
-            .unwrap_or(128.0);
-
-        let padding = query
-            .get_first_value("pad")
-            .map(|s| s.parse::<f32>().unwrap_or(-0.25))
-            .map(|f| if f < 0.0 { fontsize * -f } else { f })
-            .unwrap_or(fontsize * 0.25) as usize;
-
-        let align = match query.get_first_value("align").as_deref() {
-            Some("center") => HorizontalAlign::Center,
-            Some("right") => HorizontalAlign::Right,
-            _ => HorizontalAlign::Left,
-        };
-
-        let pattern: Option<Arc<dyn ColorProvider>> =
-            match query.get_first_value("pattern").as_deref() {
-                Some("trans") => Some(Arc::new(Stripes {
-                    colors: vec![(85, 205, 252).into(), Color::WHITE, (247, 168, 184).into()],
-                    stripe_width: fontsize as usize / 8,
-                    slope: 2.0,
-                })),
-                Some("nonbinary") => Some(Arc::new(Stripes {
-                    colors: vec![
-                        (255, 244, 48).into(),
-                        Color::WHITE,
-                        (156, 89, 209).into(),
-                        Color::BLACK,
-                    ],
-                    stripe_width: fontsize as usize / 8,
-                    slope: 2.0,
-                })),
-                _ => None,
-            };
-
-        let aspect = query
-            .get_first_value("aspect")
-            .map(|s| s.parse::<f32>().ok())
-            .flatten();
-
-        Ok(Self {
-            text,
-            align,
-            font: query.get_first_value("font").map(|s| s.into()),
-            varient: query.get_first_value("varient").map(|s| s.into()),
-            fontsize,
-            padding,
-            color: Self::color_or(longshort("color", "c"), Color::WHITE),
-            bcolor: Self::color_or(longshort("bcolor", "bc"), Color::TRANSPARENT),
-            pattern,
-            forceraw: query.has_bool("forceraw"),
-            aspect,
-            outline: query.has_bool("outline"),
-            glyph_outline: query.has_bool("glyph_outline"),
-            baseline: query.has_bool("baseline"),
-            info: query.has_bool("info"),
-        })
+            "align" => match value.as_str() {
+                "center" => self.align = HorizontalAlign::Center,
+                "right" => self.align = HorizontalAlign::Right,
+                _ => self.align = HorizontalAlign::Left,
+            },
+            "aspect" => self.aspect = value.parse().ok(),
+            "bc" | "bcolor" => {
+                self.bvisual = Visual::Color(Self::color_or(Some(value), Color::WHITE))
+            }
+            "bpattern" => {
+                if let Some(pat) = Self::pattern(value) {
+                    self.bvisual = pat;
+                }
+            }
+            _ => (),
+        }
     }
 }
 
-#[derive(Error, Debug)]
-pub enum TextError {
-    #[error("Text to rasterize must be provided")]
-    NoText,
+impl From<Query> for Operation {
+    fn from(query: Query) -> Self {
+        let mut ret = Self::default();
+
+        for param in query.into_iter() {
+            ret.push_parameter(param);
+        }
+
+        ret
+    }
 }

@@ -21,7 +21,7 @@ use smol::{
     Async,
 };
 use std::sync::Arc;
-use text::{Text, TextError};
+use text::{Operation, Text};
 use thiserror::Error;
 use tinytemplate::TinyTemplate;
 
@@ -37,7 +37,7 @@ struct Textual {
 }
 
 fn main() {
-    let provider = FontProvider::google().unwrap();
+    let provider = FontProvider::google(include_str!("webfont.key")).unwrap();
     let textual = Textual {
         font_provider: RwLock::new(provider),
         statistics: RwLock::new(Statistics::default()),
@@ -86,11 +86,12 @@ async fn serve(
 
     let query: Query = query_str.parse()?;
     println!("{} {}", query.has_bool("info"), query.has_bool("forceraw"));
-    let text: Text = if query.has_bool("info") && !query.has_bool("forceraw") {
+    let text: Operation = if query.has_bool("info") && !query.has_bool("forceraw") {
         let stats = textual.statistics.read().await;
         let provider = textual.font_provider.read().await;
         println!("in");
-        Text {
+        panic!();
+        /*Text {
             text: format!(
                 "image sent: {}\nhtml sent: {}\nfonts in cache: {}",
                 bytes_to_human(stats.image_bytes_sent),
@@ -98,9 +99,9 @@ async fn serve(
                 provider.cached()
             ),
             ..Default::default()
-        }
+        }*/
     } else {
-        query.try_into()?
+        query.into()
     };
 
     let agent = request
@@ -128,7 +129,6 @@ async fn serve(
         Ok(make_image(textual, text).await?)
     } else {
         let link = format!("{}://{}?{}&forceraw", scheme, host, query_str);
-
         Ok(make_meta(textual, text, link).await?)
     }
 }
@@ -167,9 +167,9 @@ fn bytes_to_human(bytes: usize) -> String {
 
 async fn make_image(
     textual: Arc<Textual>,
-    text: Text,
+    op: Operation,
 ) -> Result<Response<Vec<u8>>, ConnectionError> {
-    let image = text.make_image(&textual.font_provider).await;
+    let image = op.make_image(&textual.font_provider).await;
 
     let mut encoded_buffer = vec![];
 
@@ -209,7 +209,7 @@ struct Meta {
 
 async fn make_meta(
     textual: Arc<Textual>,
-    text: Text,
+    op: Operation,
     link: String,
 ) -> Result<Response<Vec<u8>>, ConnectionError> {
     let buffer = {
@@ -217,12 +217,12 @@ async fn make_meta(
         tt.add_template("html", TEMPLATE).unwrap();
 
         let content = Meta {
-            text: text.text.clone(),
+            text: op.full_text(),
             twitter_image: format!("{}&aspect=1.8", link),
             og_image: format!("{}&aspect=1.8", link),
             image: link,
-            font: text.font.clone().unwrap_or("Cabin".into()).clone(),
-            hex_color: text.color.as_hex()[..6].into(),
+            font: String::new(),
+            hex_color: String::new(),
         };
 
         tt.render("html", &content).unwrap().into_bytes()
@@ -246,6 +246,4 @@ enum ServiceError {
     ClientError(#[from] ConnectionError),
     #[error("your query string did not make sense: {0}")]
     QueryError(#[from] QueryParseError),
-    #[error("{0}")]
-    TextError(#[from] TextError),
 }

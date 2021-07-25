@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::color::Color;
 
 pub trait ColorProvider: Send + Sync {
@@ -52,12 +54,17 @@ impl Image {
     pub fn from_provider<CP: ColorProvider + ?Sized>(
         width: usize,
         height: usize,
+        off_x: isize,
+        off_y: isize,
         cp: &CP,
     ) -> Image {
         let mut data = vec![0; width * height * 4];
 
         for index in 0..width * height {
-            let color = cp.color_at(index % width, index / width);
+            let color = cp.color_at(
+                ((index % width) as isize + off_x) as usize,
+                ((index / width) as isize + off_y) as usize,
+            );
 
             data[index * 4] = color.r;
             data[index * 4 + 1] = color.g;
