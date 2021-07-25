@@ -381,7 +381,9 @@ impl Operation {
             }
             "font" => current.font = Some(value),
             "varient" => current.varient = Some(value),
-            "fs" | "fontsize" => current.fontsize = value.parse().unwrap_or(128.0),
+            "fs" | "fontsize" => {
+                current.fontsize = value.parse().unwrap_or(Text::default().fontsize)
+            }
             "c" | "color" => {
                 current.visual = Visual::Color(Self::color_or(Some(value), Color::WHITE))
             }
@@ -405,6 +407,7 @@ impl Operation {
                     self.bvisual = pat;
                 }
             }
+            "pad" => self.padding = value.parse().unwrap_or(Self::default().padding),
             _ => (),
         }
     }
