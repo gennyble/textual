@@ -96,7 +96,7 @@ async fn serve(
             provider.cached()
         );
 
-        query_str = format!("text={}&fs=16&c=black&bc=eed", Query::url_encode(&text));
+        query_str = format!("text={}&fs=32&c=black&bc=eed", Query::url_encode(&text));
     };
 
     let text: Operation = query.into();
