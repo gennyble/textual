@@ -227,15 +227,12 @@ impl Operation {
         let (metrics, raster) = font.rasterize(glyph.c, glyph.font_size);
 
         match glyph.user {
-            Visual::Color(c) => {
-                println!("{:?}", c);
-                Image::from_buffer(
-                    metrics.width,
-                    metrics.height,
-                    raster,
-                    Colors::GreyAsAlpha(c),
-                )
-            }
+            Visual::Color(c) => Image::from_buffer(
+                metrics.width,
+                metrics.height,
+                raster,
+                Colors::GreyAsAlpha(c),
+            ),
             Visual::Pattern(arcpat) => {
                 let mut mask = Mask::new(metrics.width, metrics.height);
                 let x = glyph.x.ceil() as isize + off_x;
