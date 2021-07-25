@@ -329,11 +329,11 @@ impl Operation {
         }
     }
 
-    fn pattern<P: AsRef<str>>(string: P) -> Option<Visual> {
+    fn pattern<P: AsRef<str>>(text: &Text, string: P) -> Option<Visual> {
         match string.as_ref() {
             "trans" => Some(Visual::Pattern(Arc::new(Stripes {
                 colors: vec![(85, 205, 252).into(), Color::WHITE, (247, 168, 184).into()],
-                stripe_width: 16,
+                stripe_width: (text.fontsize / 8.0) as usize,
                 slope: 2.0,
             }))),
             "nonbinary" => Some(Visual::Pattern(Arc::new(Stripes {
@@ -343,7 +343,7 @@ impl Operation {
                     (156, 89, 209).into(),
                     Color::BLACK,
                 ],
-                stripe_width: 16,
+                stripe_width: (text.fontsize / 8.0) as usize,
                 slope: 2.0,
             }))),
             _ => None,
@@ -386,7 +386,7 @@ impl Operation {
                 current.visual = Visual::Color(Self::color_or(Some(value), Color::WHITE))
             }
             "pattern" => {
-                if let Some(pat) = Self::pattern(value) {
+                if let Some(pat) = Self::pattern(current, value) {
                     current.visual = pat;
                 }
             }
@@ -401,7 +401,7 @@ impl Operation {
                 self.bvisual = Visual::Color(Self::color_or(Some(value), Color::WHITE))
             }
             "bpattern" => {
-                if let Some(pat) = Self::pattern(value) {
+                if let Some(pat) = Self::pattern(current, value) {
                     self.bvisual = pat;
                 }
             }
