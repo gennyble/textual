@@ -28,7 +28,7 @@ impl FontCache {
 
     fn family<S: AsRef<str>>(&self, name: S) -> Option<&Family> {
         for font in &self.fonts {
-            if font.name == name.as_ref() {
+            if font.face == name.as_ref() {
                 return Some(font);
             }
         }
@@ -38,7 +38,7 @@ impl FontCache {
 
     fn family_mut<S: AsRef<str>>(&mut self, name: S) -> Option<&mut Family> {
         for font in self.fonts.iter_mut() {
-            if font.name == name.as_ref() {
+            if font.face == name.as_ref() {
                 return Some(font);
             }
         }
@@ -137,10 +137,10 @@ impl FontProvider {
         }
     }
 
-    pub fn google() -> Result<FontProvider, ureq::Error> {
+    pub fn google(apikey: &str) -> Result<FontProvider, ureq::Error> {
         let api_str = format!(
             "https://www.googleapis.com/webfonts/v1/webfonts?key={}",
-            include_str!("webfont.key")
+            apikey
         );
 
         let before = Instant::now();
@@ -173,16 +173,19 @@ impl FontProvider {
     }
 
     pub fn cached(&self) -> usize {
-        self.font_cache.fonts.len()
+        self.font_cache
+            .fonts
+            .iter()
+            .fold(0, |acc, fam| acc + fam.varients.len())
     }
 
     fn push(&mut self, fam: Family) {
         self.fonts.push(fam);
     }
 
-    fn family<S: AsRef<str>>(&self, name: S) -> Option<&Family> {
+    fn family<S: AsRef<str>>(&self, face: S) -> Option<&Family> {
         for font in &self.fonts {
-            if font.name == name.as_ref() {
+            if font.face == face.as_ref() {
                 return Some(font);
             }
         }
@@ -234,14 +237,14 @@ impl FontProvider {
 }
 
 struct Family {
-    name: String,
+    face: String,
     varients: Vec<(String, String)>,
 }
 
 impl Family {
-    fn new<S: Into<String>>(name: S) -> Self {
+    fn new<S: Into<String>>(face: S) -> Self {
         Family {
-            name: name.into(),
+            face: face.into(),
             varients: vec![],
         }
     }
