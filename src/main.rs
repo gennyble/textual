@@ -1,6 +1,7 @@
 extern crate image as crateimage;
 
 mod color;
+mod config;
 mod fontprovider;
 mod image;
 mod text;
@@ -25,6 +26,8 @@ use text::{Operation, Text};
 use thiserror::Error;
 use tinytemplate::TinyTemplate;
 
+use crate::config::Config;
+
 #[derive(Debug, Default)]
 struct Statistics {
     image_bytes_sent: usize,
@@ -32,18 +35,31 @@ struct Statistics {
 }
 
 struct Textual {
+    config: Config,
     statistics: RwLock<Statistics>,
     font_provider: RwLock<FontProvider>,
 }
 
 fn main() {
-    let provider = FontProvider::google(include_str!("webfont.key")).unwrap();
+    let config = match Config::get() {
+        Ok(Some(c)) => c,
+        Ok(None) => return,
+        Err(e) => {
+            println!("{}", e);
+            std::process::exit(1);
+        }
+    };
+
+    let provider =
+        FontProvider::google(config.font_cache_path(), include_str!("webfont.key")).unwrap();
+
     let textual = Textual {
+        config,
         font_provider: RwLock::new(provider),
         statistics: RwLock::new(Statistics::default()),
     };
 
-    let listener = Async::<TcpListener>::bind(([127, 0, 0, 1], 8080)).unwrap();
+    let listener = Async::<TcpListener>::bind(([127, 0, 0, 1], textual.config.port())).unwrap();
 
     smol::block_on(listen(Arc::new(textual), listener))
 }
@@ -119,8 +135,21 @@ async fn serve(
         request.uri().path_and_query().unwrap().to_string()
     );
 
-    let scheme = request.uri().scheme_str().unwrap_or("http");
-    let host = request.headers().get("host").unwrap().to_str().unwrap();
+    let host = textual
+        .config
+        .host()
+        .or(request
+            .headers()
+            .get("host")
+            .map(|hv| hv.to_str().ok())
+            .flatten())
+        .unwrap_or("localhost");
+
+    let scheme = textual
+        .config
+        .scheme()
+        .or(request.uri().scheme_str())
+        .unwrap_or(if host == "localhost" { "http" } else { "https" });
 
     if text.forceraw {
         // Image
