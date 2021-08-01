@@ -1,6 +1,6 @@
 use std::{
     io::{self, Read, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Arc,
     time::Instant,
 };
@@ -127,17 +127,17 @@ pub struct FontProvider {
 }
 
 impl FontProvider {
-    fn new() -> Self {
+    fn new<P: AsRef<Path>>(fontcache: P) -> Self {
         Self {
             default: Arc::new(
                 fontster::parse_font(include_bytes!("../Cabin-Regular.ttf")).unwrap(),
             ),
             fonts: vec![],
-            font_cache: FontCache::new("fonts").unwrap(),
+            font_cache: FontCache::new(fontcache.as_ref()).unwrap(),
         }
     }
 
-    pub fn google(apikey: &str) -> Result<FontProvider, ureq::Error> {
+    pub fn google<P: AsRef<Path>>(fontcache: P, apikey: &str) -> Result<FontProvider, ureq::Error> {
         let api_str = format!(
             "https://www.googleapis.com/webfonts/v1/webfonts?key={}",
             apikey
@@ -152,7 +152,7 @@ impl FontProvider {
             _ => panic!(),
         };
 
-        let mut provider = FontProvider::new();
+        let mut provider = FontProvider::new(fontcache);
 
         for item in fonts {
             let name = item["family"].as_str().unwrap();
