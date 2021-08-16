@@ -13,6 +13,7 @@ use std::{
     time::Instant,
 };
 
+use chrono::Utc;
 use crateimage::png::PngEncoder;
 use fontprovider::FontProvider;
 use serde::Serialize;
@@ -105,14 +106,19 @@ async fn serve(
     if query.has_bool("info") && !query.has_bool("forceraw") {
         let stats = textual.statistics.read().await;
         let provider = textual.font_provider.read().await;
+
         let text = format!(
-            "image sent: {}\nhtml sent: {}\nfonts in cache: {}",
+            "{}\n\nimage sent: {}\nhtml sent: {}\nfonts in cache: {}",
+            Utc::now().format("%H:%M UTC\n%a %B %-d %Y"),
             bytes_to_human(stats.image_bytes_sent),
             bytes_to_human(stats.html_bytes_sent),
             provider.cached()
         );
 
-        query_str = format!("text={}&fs=32&c=black&bc=eed", Query::url_encode(&text));
+        query_str = format!(
+            "fs=32&c=black&bc=eed&lh=font&text={}",
+            Query::url_encode(&text)
+        );
     };
 
     let text: Operation = query.into();
