@@ -1,6 +1,8 @@
 use std::{borrow::BorrowMut, convert::TryFrom, ops::DerefMut, sync::Arc};
 
-use fontster::{Font, GlyphPosition, HorizontalAlign, Layout, LayoutSettings, StyledText};
+use fontster::{
+    Font, GlyphPosition, HorizontalAlign, Layout, LayoutSettings, LineHeight, StyledText,
+};
 use small_http::{Parameter, Query};
 use smol::lock::{Mutex, RwLock};
 use thiserror::Error;
@@ -76,6 +78,7 @@ impl FontFace {
 pub struct Operation {
     pub bvisual: Visual,
     pub texts: Vec<Text>,
+    pub line_height: LineHeight,
     pub padding: usize,
     pub align: HorizontalAlign,
     pub forceraw: bool,
@@ -91,6 +94,7 @@ impl Default for Operation {
         Self {
             bvisual: Color::TRANSPARENT.into(),
             texts: vec![Text::default()],
+            line_height: LineHeight::Smallest(1.05),
             padding: 32,
             align: HorizontalAlign::Left,
             forceraw: false,
@@ -109,6 +113,7 @@ impl Operation {
 
         let settings = LayoutSettings {
             horizontal_align: self.align,
+            line_height: fontster::LineHeight::Smallest(1.05),
         };
 
         let mut layout = Layout::new(settings);
@@ -137,6 +142,10 @@ impl Operation {
                     fonts.len() - 1
                 }
             };
+
+            if text.text.len() == 0 {
+                continue;
+            }
 
             layout.append(
                 &fonts
@@ -350,6 +359,28 @@ impl Operation {
         }
     }
 
+    fn line_height<H: AsRef<str>>(height: H) -> Option<LineHeight> {
+        if height.as_ref() == "font" {
+            return Some(LineHeight::Font);
+        }
+
+        let (mode, ratio) = match height.as_ref().split_once(' ') {
+            Some(splits) => splits,
+            None => return None,
+        };
+
+        let ratio: f32 = match ratio.parse() {
+            Ok(ratio) => ratio,
+            Err(_) => return None,
+        };
+
+        match mode {
+            "ratio" => Some(LineHeight::Ratio(ratio)),
+            "min" => Some(LineHeight::Smallest(ratio)),
+            _ => None,
+        }
+    }
+
     fn push_parameter(&mut self, parameter: Parameter) {
         match parameter {
             Parameter::Bool(name) => self.parse_bool(name),
@@ -369,15 +400,10 @@ impl Operation {
 
         match key.as_str() {
             "text" => {
-                if current.text.is_empty() {
-                    self.texts[0].text = value;
-                    return;
-                } else {
-                    let mut next = current.clone();
-                    next.text = value;
+                let next = current.clone();
+                current.text = value;
 
-                    self.texts.push(next);
-                }
+                self.texts.push(next);
             }
             "font" => current.font = Some(value),
             "varient" => current.varient = Some(value),
@@ -408,6 +434,9 @@ impl Operation {
                 }
             }
             "pad" => self.padding = value.parse().unwrap_or(Self::default().padding),
+            "lh" | "lineheight" => {
+                self.line_height = Self::line_height(value).unwrap_or(Self::default().line_height)
+            }
             _ => (),
         }
     }
