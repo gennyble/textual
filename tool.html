@@ -1,14 +1,209 @@
 <html>
 
 <head>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>Textual</title>
+	<style>
+		* {
+			box-sizing: border-box;
+		}
+
+		code {
+			display: inline-block;
+			background-color: #ddd;
+			padding: 2px 0.25rem;
+			border-radius: 4px;
+		}
+
+		main {
+			width: 100%;
+		}
+
+		section {
+			text-align: justify;
+		}
+
+		div>h1 {
+			font-weight: inherit;
+			font-size: 1rem;
+			padding-bottom: 0;
+			margin: 0;
+		}
+
+		div>p {
+			margin-top: 0.5rem;
+		}
+
+		#parameters {
+			width: 80vw;
+			margin: 0 auto;
+
+			display: flex;
+			flex-direction: row;
+			row-gap: 1rem;
+			column-gap: 2rem;
+			flex-wrap: wrap;
+			justify-content: center;
+		}
+
+		@media (max-width: 40rem) {
+			body {
+				padding: 1.5rem 0;
+			}
+
+			main {
+				padding: 0 1rem;
+				margin: 0 auto;
+			}
+
+			section {
+				width: 100%;
+			}
+
+			div {
+				width: 100%;
+			}
+
+			#parameters {
+				width: 100%;
+			}
+		}
+
+		@media (min-width: 40rem) {
+			body {
+				padding: 3rem 0;
+			}
+
+			#introduction {
+				display: block;
+
+				width: 36rem;
+
+				margin: 0 auto;
+			}
+
+			div {
+				width: 20rem;
+				flex: 0 1 14rem;
+			}
+		}
+	</style>
 </head>
 
 <body>
-	<form method="GET" action=".">
-		<input type="text" name="text">
-		<input type="submit">
-	</form>
+	<main>
+		<section id="introduction">
+			<h1>A Short Guide To Textual</h1>
+			<p>
+				You tell textual what to do via query parameters. Those are the bits at the end of the URL after the
+				first <code>?</code>. Query parameters look like this: <code>key=value</code> and are seperated with
+				<code>&</code>. So, if you wanted to set the <code>color</code> and <code>text</code> parameters, it
+				would look like this: <code>?color=turquoise&text=Textual</code>.
+			</p>
+		</section>
+		<section id="parameters">
+			<div>
+				<h1><code>info</code></h1>
+				<p>
+					Ignore all other parameters and get some information on the server
+				</p>
+			</div>
+			<div>
+				<h1><code>text</code></h1>
+				<p>
+					The text to draw itself
+				</p>
+			</div>
+			<div>
+				<h1><code>forceraw</code></h1>
+				<p>
+					Force the server to return the image instead of the HTML with the opengraph tags for embedding.
+				</p>
+			</div>
+			<div>
+				<h1><code>font</code></h1>
+				<p>
+					Set the font to write subsequent <code>text</code> in.
+				</p>
+			</div>
+			<div>
+				<h1><code>varient</code></h1>
+				<p>
+					What version of a font to use. Ex: regular, bold, italic
+				</p>
+			</div>
+			<div>
+				<h1><code>fs</code>; <code>fontsize</code></h1>
+				<p>
+					The size of the following <code>text</code>s in pixels
+				</p>
+			</div>
+			<div>
+				<h1><code>c</code>; <code>color</code></h1>
+				<p>
+					The color of the following <code>text</code>s. This will override
+					<code>pattern</code> if it was previously set. TODO: Describe accepted colour formats. In another
+					section.
+				</p>
+			</div>
+			<div>
+				<h1><code>pattern</code></h1>
+				<p>
+					Currently only accepts two pre-programmed pattern: trans, nonbinary
+				</p>
+			</div>
+			<div>
+				<h1><code>align</code></h1>
+				<p>
+					Sets the alignment of the following <code>text</code>s. Accepted values are: right, center, left
+				</p>
+			</div>
+			<div>
+				<h1><code>aspect</code></h1>
+				<p>
+					Force the image into the specified aspect ratio. Accepts floats.
+				</p>
+			</div>
+			<div>
+				<h1><code>bc</code>; <code>bcolor</code></h1>
+				<p>
+					Background color. If set multiple times, the last one will be taken.
+				</p>
+			</div>
+			<div>
+				<h1><code>bpattern</code></h1>
+				<p>
+					Overrides <code>bcolor</code>
+				</p>
+			</div>
+			<div>
+				<h1><code>pad</code></h1>
+				<p>
+					Pad all sides of the image by this number of pixels
+				</p>
+			</div>
+			<div>
+				<h1><code>lh</code>; <code>lineheight</code></h1>
+				<p>
+					TODO: Figure out how this works
+				</p>
+			</div>
+			<!--
+				TODO:
+				- Section for colour format
+				- Describe pattern
+
+				x c; color
+				x pattern
+				x align (center | right | left (default))
+				x aspect
+				x bc; bcolor
+				x bpattern
+				x pad
+				x lh; lineheight
+			-->
+		</section>
+	</main>
 </body>
 
 </html>
