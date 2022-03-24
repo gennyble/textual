@@ -160,6 +160,7 @@ impl FontProvider {
 
             for (style, filepath) in item["files"].as_object().unwrap() {
                 family.push(style, filepath.as_str().unwrap());
+                println!("Font {} Varient {}", name, style);
             }
 
             provider.push(family);
