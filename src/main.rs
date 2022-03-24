@@ -8,6 +8,7 @@ mod text;
 
 use std::{
     cell::Cell,
+    collections::HashMap,
     convert::TryInto,
     net::{TcpListener, TcpStream},
     time::Instant,
@@ -31,8 +32,49 @@ use crate::config::Config;
 
 #[derive(Debug, Default)]
 struct Statistics {
-    image_bytes_sent: usize,
-    html_bytes_sent: usize,
+    statmap: HashMap<String, usize>,
+}
+
+impl Statistics {
+    pub fn add<S: Into<String>>(&mut self, mime: S, size: usize) {
+        let mime = mime.into();
+
+        match self.statmap.get_mut(&mime) {
+            Some(total) => *total += size,
+            None => {
+                self.statmap.insert(mime, size);
+            }
+        }
+    }
+
+    /// Get how many bytes were sent for a specific mime type. If the mime type
+    /// is not in the map, meaning it's not been sent out before, 0 is returned.
+    pub fn sent<S: Into<String>>(&self, mime: S) -> usize {
+        self.statmap
+            .get(&mime.into())
+            .map(|size| *size)
+            .unwrap_or_default()
+    }
+
+    /// Get the total number of bytes that have been sent with a mime type
+    /// starting in "image/"
+    pub fn image(&self) -> usize {
+        self.statmap.iter().fold(0, |acc, (mime, &total)| {
+            if mime.starts_with("image") {
+                acc + total
+            } else {
+                acc
+            }
+        })
+    }
+
+    /// Shorthand for querying the "text/html" mime type
+    pub fn html(&self) -> usize {
+        self.statmap
+            .get("text/html")
+            .map(|size| *size)
+            .unwrap_or_default()
+    }
 }
 
 struct Textual {
@@ -76,13 +118,23 @@ async fn listen(textual: Arc<Textual>, listener: Async<TcpListener>) {
 async fn error_handler(textual: Arc<Textual>, stream: Async<TcpStream>) {
     let mut connection = Connection::new(stream);
 
-    let response = match serve(textual, &mut connection).await {
+    let response = match serve(textual.clone(), &mut connection).await {
         Ok(resp) => resp,
         Err(e) => Response::builder()
             .header("content-type", "text/plain")
             .body(e.to_string().as_bytes().to_vec())
             .unwrap(),
     };
+
+    match response.headers().get("content-type").map(|hv| hv.to_str()) {
+        Some(Ok(mime)) => {
+            let mut stats = textual.statistics.write().await;
+            stats.add(mime, response.body().len());
+        }
+        _ => {
+            //TODO: Maybe print here that the content-type was unset or could not be parsed as a string
+        }
+    }
 
     connection
         .respond(response)
@@ -110,8 +162,8 @@ async fn serve(
         let text = format!(
             "{}\n\nimage sent: {}\nhtml sent: {}\nfonts in cache: {}",
             Utc::now().format("%H:%M UTC\n%a %B %-d %Y"),
-            bytes_to_human(stats.image_bytes_sent),
-            bytes_to_human(stats.html_bytes_sent),
+            bytes_to_human(stats.image()),
+            bytes_to_human(stats.html()),
             provider.cached()
         );
 
@@ -216,11 +268,6 @@ async fn make_image(
         )
         .unwrap();
 
-    {
-        let mut stats = textual.statistics.write().await;
-        stats.image_bytes_sent += encoded_buffer.len();
-    }
-
     Response::builder()
         .header("content-type", "image/png")
         .header("content-length", encoded_buffer.len())
@@ -260,11 +307,6 @@ async fn make_meta(
 
         tt.render("html", &content).unwrap().into_bytes()
     };
-
-    {
-        let mut stats = textual.statistics.write().await;
-        stats.html_bytes_sent += buffer.len();
-    }
 
     Response::builder()
         .header("content-type", "text/html")
