@@ -1,4 +1,5 @@
 use std::{
+    net::{AddrParseError, IpAddr, Ipv4Addr},
     num::ParseIntError,
     path::{Path, PathBuf},
 };
@@ -9,14 +10,19 @@ use thiserror::Error;
 
 pub struct Config {
     font_cache_path: PathBuf,
+    listen: IpAddr,
     port: u16,
     scheme: Option<String>,
-    host: Option<String>,
+    meta_host: Option<String>,
 }
 
 impl Config {
     pub fn font_cache_path(&self) -> &Path {
         &self.font_cache_path
+    }
+
+    pub fn listen(&self) -> IpAddr {
+        self.listen
     }
 
     pub fn port(&self) -> u16 {
@@ -27,8 +33,8 @@ impl Config {
         self.scheme.as_deref()
     }
 
-    pub fn host(&self) -> Option<&str> {
-        self.host.as_deref()
+    pub fn meta_host(&self) -> Option<&str> {
+        self.meta_host.as_deref()
     }
 
     fn usage(opts: &Options) {
@@ -76,6 +82,12 @@ impl Config {
 			"PATH"
 		);
         opts.optopt(
+            "l",
+            "listen",
+            "What IP the server should listen on\nConfig key: Listen\nDefaults to 127.0.0.1",
+            "IPADDR",
+        );
+        opts.optopt(
             "p",
             "port",
             "What part the server should listen on\nConfig key: Port\nDefaults to 30211",
@@ -83,10 +95,10 @@ impl Config {
         );
         opts.optopt(
             "",
-            "hostname",
+            "meta-host",
             "Host to force in the meta-tags image link\n\
 			Overrides the config file.\n\
-            Config key: Hostname\n\
+            Config key: MetaHost\n\
 			Default is the host header, or localhost if missing",
             "HOSTNAME",
         );
@@ -113,6 +125,16 @@ impl Config {
             return Err(ConfigError::InvalidFontCache(font_cache_path));
         }
 
+        let listen_string = matches
+            .opt_str("listen")
+            .or(conf.child_value("Listen").map(|s| s.into()));
+
+        let listen = if let Some(string) = listen_string {
+            string.parse()?
+        } else {
+            IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))
+        };
+
         let port_string = matches
             .opt_str("port")
             .or(conf.child_value("Port").map(|s| s.into()));
@@ -123,11 +145,11 @@ impl Config {
             30211
         };
 
-        let hostname_string = matches
-            .opt_str("hostname")
-            .or(conf.child_value("Hostname").map(|s| s.into()));
+        let metahost_string = matches
+            .opt_str("meta-host")
+            .or(conf.child_value("MetaHost").map(|s| s.into()));
 
-        let (scheme, host) = match hostname_string {
+        let (scheme, meta_host) = match metahost_string {
             Some(s) => {
                 let (scheme, host) = Self::parse_hostname(s)?;
                 (scheme, Some(host))
@@ -137,9 +159,10 @@ impl Config {
 
         Ok(Some(Self {
             font_cache_path,
+            listen,
             port,
             scheme,
-            host,
+            meta_host,
         }))
     }
 }
@@ -158,4 +181,6 @@ pub enum ConfigError {
     InvalidScheme(String),
     #[error("Invalid port specified: '{0}'")]
     InvalidPort(#[from] ParseIntError),
+    #[error("Invalid IP for listen: '{0}'")]
+    InvalidListen(#[from] AddrParseError),
 }
