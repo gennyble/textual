@@ -127,8 +127,14 @@ async fn serve(
             provider.cached()
         );
 
+        let font = match query.get_first_value("font") {
+            Some(font) => format!("font={}&", font),
+            None => String::new(),
+        };
+
         query_str = format!(
-            "fs=32&c=black&bc=eed&lh=font&text={}",
+            "{}fs=32&c=black&bc=eed&lh=font&text={}",
+            font,
             Query::url_encode(&text)
         );
     }
