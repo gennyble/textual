@@ -34,6 +34,28 @@
 			margin-top: 0.5rem;
 		}
 
+		#authored {
+			color: #333;
+			flex: 0 0 100%;
+			text-align: right
+		}
+
+		a {
+			color: inherit;
+			border-bottom: 1px dashed black;
+			text-decoration: none;
+		}
+
+		a:hover {
+			background-color: #3a8;
+			border-bottom: 1px solid #d09ae9;
+		}
+
+		a:active {
+			background-color: #d09ae9;
+			border: none;
+		}
+
 		#parameters {
 			width: 80vw;
 			margin: 0 auto;
@@ -202,6 +224,13 @@
 				x pad
 				x lh; lineheight
 			-->
+			<div id="authored">
+				<p>
+					authored by <a href="https://nyble.dev">Genny Z</a>
+					<br>
+					<a href="https://github.com/gennyble/textual">source</a>
+				</p>
+			</div>
 		</section>
 	</main>
 </body>
