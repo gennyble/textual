@@ -231,7 +231,7 @@ impl Operation {
         ret
     }
 
-    //todo: pass glyph an offset so we can align the pattern (what does this mean)
+    //todo: pass glyph an offset so we can align the pattern (gen 2020-03: what does this mean)
     /// Renders a single glyph
     fn glyph(
         &self,
@@ -418,7 +418,7 @@ impl Operation {
             "fs" | "fontsize" => {
                 current.fontsize = value.parse().unwrap_or(Text::default().fontsize)
             }
-            "c" | "color" => {
+            "c" | "color" | "colour" => {
                 current.visual = Visual::Color(Self::color_or(Some(value), Color::WHITE))
             }
             "pattern" => {
@@ -433,7 +433,7 @@ impl Operation {
                 _ => self.align = HorizontalAlign::Left,
             },
             "aspect" => self.aspect = value.parse().ok(),
-            "bc" | "bcolor" => {
+            "bc" | "bcolor" | "bcolour" => {
                 self.bvisual = Visual::Color(Self::color_or(Some(value), Color::WHITE))
             }
             "bpattern" => {
