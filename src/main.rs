@@ -4,6 +4,7 @@ mod color;
 mod config;
 mod fontprovider;
 mod image;
+mod statistics;
 mod text;
 
 use std::{
@@ -29,53 +30,7 @@ use thiserror::Error;
 use tinytemplate::TinyTemplate;
 
 use crate::config::Config;
-
-#[derive(Debug, Default)]
-struct Statistics {
-    statmap: HashMap<String, usize>,
-}
-
-impl Statistics {
-    pub fn add<S: Into<String>>(&mut self, mime: S, size: usize) {
-        let mime = mime.into();
-
-        match self.statmap.get_mut(&mime) {
-            Some(total) => *total += size,
-            None => {
-                self.statmap.insert(mime, size);
-            }
-        }
-    }
-
-    /// Get how many bytes were sent for a specific mime type. If the mime type
-    /// is not in the map, meaning it's not been sent out before, 0 is returned.
-    pub fn sent<S: Into<String>>(&self, mime: S) -> usize {
-        self.statmap
-            .get(&mime.into())
-            .map(|size| *size)
-            .unwrap_or_default()
-    }
-
-    /// Get the total number of bytes that have been sent with a mime type
-    /// starting in "image/"
-    pub fn image(&self) -> usize {
-        self.statmap.iter().fold(0, |acc, (mime, &total)| {
-            if mime.starts_with("image") {
-                acc + total
-            } else {
-                acc
-            }
-        })
-    }
-
-    /// Shorthand for querying the "text/html" mime type
-    pub fn html(&self) -> usize {
-        self.statmap
-            .get("text/html")
-            .map(|size| *size)
-            .unwrap_or_default()
-    }
-}
+use crate::statistics::Statistics;
 
 struct Textual {
     config: Config,
@@ -110,7 +65,7 @@ fn main() {
 
 async fn listen(textual: Arc<Textual>, listener: Async<TcpListener>) {
     loop {
-        let (stream, clientaddr) = listener.accept().await.unwrap();
+        let (stream, _clientaddr) = listener.accept().await.unwrap();
         let task = smol::spawn(error_handler(textual.clone(), stream));
         task.detach();
     }
@@ -149,13 +104,17 @@ async fn serve(
 ) -> Result<Response<Vec<u8>>, ServiceError> {
     let request = con.request().await?.unwrap();
 
+    // Return the tool page if the query string is empty or not there at all
     let mut query_str = match request.uri().query() {
-        Some(query_str) => query_str.to_owned(),
         None => return Ok(serve_tool()?),
+        Some(query_str) if query_str.is_empty() => return Ok(serve_tool()?),
+        Some(query_str) => query_str.to_owned(),
     };
 
     let query: Query = query_str.parse()?;
 
+    // if we have `info` and `forceraw` then we should pass this by; we're
+    // generating the `info` image itself if that's the case
     if query.has_bool("info") && !query.has_bool("forceraw") {
         let stats = textual.statistics.read().await;
         let provider = textual.font_provider.read().await;
@@ -172,7 +131,7 @@ async fn serve(
             "fs=32&c=black&bc=eed&lh=font&text={}",
             Query::url_encode(&text)
         );
-    };
+    }
 
     let text: Operation = query.into();
 
@@ -194,6 +153,7 @@ async fn serve(
         request.uri().path_and_query().unwrap().to_string()
     );
 
+    // Find the hostname we should use for the image link in the opengraph tags
     let host = textual
         .config
         .meta_host()

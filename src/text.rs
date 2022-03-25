@@ -25,6 +25,19 @@ impl From<Color> for Visual {
     }
 }
 
+#[derive(Clone, PartialEq)]
+struct FontFace {
+    typeface: String,
+    varient: String,
+}
+
+impl FontFace {
+    pub fn new(typeface: String, varient: String) -> Self {
+        Self { typeface, varient }
+    }
+}
+
+/// A `text` parameter.
 #[derive(Clone)]
 pub struct Text {
     pub text: String,
@@ -59,18 +72,6 @@ impl Text {
         }
 
         fp.read().await.default_font()
-    }
-}
-
-#[derive(Clone, PartialEq)]
-struct FontFace {
-    typeface: String,
-    varient: String,
-}
-
-impl FontFace {
-    pub fn new(typeface: String, varient: String) -> Self {
-        Self { typeface, varient }
     }
 }
 
@@ -123,6 +124,9 @@ impl Operation {
                 text.varient.clone().unwrap_or("regular".into()),
             );
 
+            // This hell-of-a-thing looks through our font vector. If it's already in there,
+            // we don't add it again and get it's index. If it's not, we push it and get the
+            // index of the newly added font.
             let index = match fonts
                 .iter()
                 .enumerate()
@@ -150,7 +154,7 @@ impl Operation {
             layout.append(
                 &fonts
                     .iter()
-                    .map(|(face, font)| font.clone())
+                    .map(|(_face, font)| font.clone())
                     .collect::<Vec<Arc<Font>>>(),
                 StyledText {
                     text: text.text.as_str(),
@@ -216,15 +220,19 @@ impl Operation {
         image
     }
 
+    /// Get all the text that will be rendered for this query.
     pub fn full_text(&self) -> String {
         let mut ret = String::new();
+
         for text in &self.texts {
             ret.push_str(&text.text);
         }
+
         ret
     }
 
-    //todo: pass glyph an offset so we can align the pattern
+    //todo: pass glyph an offset so we can align the pattern (what does this mean)
+    /// Renders a single glyph
     fn glyph(
         &self,
         fonts: &[Arc<Font>],
@@ -345,7 +353,7 @@ impl Operation {
                 stripe_width: (text.fontsize / 8.0) as usize,
                 slope: 2.0,
             }))),
-            "nonbinary" => Some(Visual::Pattern(Arc::new(Stripes {
+            "enby" => Some(Visual::Pattern(Arc::new(Stripes {
                 colors: vec![
                     (255, 244, 48).into(),
                     Color::WHITE,
