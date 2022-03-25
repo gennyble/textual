@@ -102,7 +102,8 @@ fn main() {
         statistics: RwLock::new(Statistics::default()),
     };
 
-    let listener = Async::<TcpListener>::bind(([127, 0, 0, 1], textual.config.port())).unwrap();
+    let listener =
+        Async::<TcpListener>::bind((textual.config.listen(), textual.config.port())).unwrap();
 
     smol::block_on(listen(Arc::new(textual), listener))
 }
@@ -195,7 +196,7 @@ async fn serve(
 
     let host = textual
         .config
-        .host()
+        .meta_host()
         .or(request
             .headers()
             .get("host")
