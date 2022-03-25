@@ -5,11 +5,11 @@ Ever want to say something, but bigger? Want to post an image of text, so you
 can style it in fun ways, but want to remain accessible? Textual can help you!
 
 The URL below will provide the image, also shown below.  
-https://textual.pictures/?text=Textual%21&font=Righteous&color=155
+https://textual.pictures/?color=155&font=Righteous&text=Textual%21
 
 <p align="center" style="width: 100%">
 
-<img src="https://textual.pictures/?text=Textual%21&font=Righteous&color=155&forceraw" alt="Text, in the font Righteous, reading 'Textual!'">
+<img src="https://textual.pictures/?color=155&font=Righteous&text=Textual%21&forceraw" alt="Text, in the font Righteous, reading 'Textual!'">
 
 </p>
 
