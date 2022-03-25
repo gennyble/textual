@@ -9,7 +9,7 @@ https://textual.pictures/?text=Textual%21&font=Righteous&color=155
 
 <p align="center" style="width: 100%">
 
-<img src="https://textual.pictures/?text=Textual%21&font=Righteous&color=155" alt="Text, in the font Righteous, reading 'Textual!'">
+<img src="https://textual.pictures/?text=Textual%21&font=Righteous&color=155&forceraw" alt="Text, in the font Righteous, reading 'Textual!'">
 
 </p>
 
