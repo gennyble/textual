@@ -355,6 +355,7 @@ dependencies = [
 [[package]]
 name = "fontster"
 version = "0.1.0"
+source = "git+https://github.com/gennyble/fontster?branch=main#15ee44e27d18d5fd8129c9be253315044abab34c"
 dependencies = [
  "fontdue",
  "thiserror",
@@ -863,6 +864,7 @@ checksum = "f173ac3d1a7e3b28003f40de0b5ce7fe2710f9b9dc3fc38664cebee46b3b6527"
 [[package]]
 name = "small_http"
 version = "0.1.0"
+source = "git+https://github.com/gennyble/small_http?branch=main#28a2e674dd65c8c5a93071c6882cb21a30dd0881"
 dependencies = [
  "async-dup",
  "async-io",
