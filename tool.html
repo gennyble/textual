@@ -122,8 +122,21 @@
 				<code>&</code>. So, if you wanted to set the <code>color</code> and <code>text</code> parameters, it
 				would look like this: <code>?color=turquoise&text=Textual</code>.
 			</p>
+			<p>
+				Textual is stateful. When you change the font or color et al. it will be changed for every following
+				<code>text</code> you specify. You may specify parameters multiple times. If, say, you wanted to write
+				"RedBlue" with the words being their color, you might do:
+				<code>?color=red&text=Red&color=blue&text=Blue</code>
+			</p>
 		</section>
 		<section id="parameters">
+			<div>
+				<h1><code>text</code></h1>
+				<p>
+					The text to draw. Parameters before this are applied to this text and parameters after this are
+					applied to the next text.
+				</p>
+			</div>
 			<div>
 				<h1><code>info</code></h1>
 				<p>
@@ -131,15 +144,15 @@
 				</p>
 			</div>
 			<div>
-				<h1><code>text</code></h1>
+				<h1><code>me</code></h1>
 				<p>
-					The text to draw itself
+					Get information on how you appear to the server
 				</p>
 			</div>
 			<div>
 				<h1><code>forceraw</code></h1>
 				<p>
-					Force the server to return the image instead of the HTML with the opengraph tags for embedding.
+					Force the server to return the image instead of the HTML page.
 				</p>
 			</div>
 			<div>
@@ -164,20 +177,21 @@
 				<h1><code>c</code>; <code>color</code>; <code>colour</code></h1>
 				<p>
 					The color of the following <code>text</code>s. This will override
-					<code>pattern</code> if it was previously set. TODO: Describe accepted colour formats. In another
-					section.
+					<code>pattern</code> if it was previously set. See <a href="#Color-formats">accepted color
+						formats</a>
 				</p>
 			</div>
 			<div>
 				<h1><code>pattern</code></h1>
 				<p>
-					Currently only accepts two pre-programmed pattern: trans, nonbinary
+					Currently only accepts two pre-programmed pattern: trans, enby. This will override
+					<code>color</code> if it was previously set.
 				</p>
 			</div>
 			<div>
 				<h1><code>align</code></h1>
 				<p>
-					Sets the alignment of the following <code>text</code>s. Accepted values are: right, center, left
+					Sets the alignment of every <code>text</code>. Accepted values are: right, center, left
 				</p>
 			</div>
 			<div>
@@ -204,10 +218,12 @@
 					Pad all sides of the image by this number of pixels
 				</p>
 			</div>
-			<div>
+			<div style="display: none">
+				<!-- Line height is not ready yet -->
 				<h1><code>lh</code>; <code>lineheight</code></h1>
 				<p>
-					TODO: Figure out how this works
+					Adjust the height of following <code>text</code>s lines. "font" will use the line height the font
+					suggests. "ratio 1.1" will multiple the fonts suggestion by 1.1
 				</p>
 			</div>
 			<!--

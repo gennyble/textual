@@ -114,7 +114,7 @@ impl Operation {
 
         let settings = LayoutSettings {
             horizontal_align: self.align,
-            line_height: fontster::LineHeight::Smallest(1.05),
+            line_height: self.line_height,
         };
 
         let mut layout = Layout::new(settings);

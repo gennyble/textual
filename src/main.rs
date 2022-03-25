@@ -133,8 +133,6 @@ async fn serve(
         );
     }
 
-    let text: Operation = query.into();
-
     let agent = request
         .headers()
         .get("user-agent")
@@ -142,16 +140,35 @@ async fn serve(
         .to_str()
         .unwrap();
 
+    let clientaddr = request
+        .headers()
+        .get("X-Forwarded-For")
+        .map(|h| h.to_str().unwrap_or("unknown"))
+        .unwrap_or("unknown");
+
     println!(
         "connection: {}\n\tua: {}\n\tpath: {}",
-        request
-            .headers()
-            .get("X-Forwarded-For")
-            .map(|h| h.to_str().unwrap_or("unknown"))
-            .unwrap_or("unknown"),
+        clientaddr,
         agent,
         request.uri().path_and_query().unwrap().to_string()
     );
+
+    if query.has_bool("me") && !query.has_bool("forceraw") && !query.has_bool("info") {
+        let text = format!("IP: {}\n\nUser Agent\n{}", clientaddr, agent);
+
+        let font = match query.get_first_value("font") {
+            Some(font) => format!("font={}&", font),
+            None => String::new(),
+        };
+
+        query_str = format!(
+            "{}fs=32&c=black&bc=eed&lh=font&text={}",
+            font,
+            Query::url_encode(&text)
+        );
+    }
+
+    let text: Operation = query.into();
 
     // Find the hostname we should use for the image link in the opengraph tags
     let host = textual
