@@ -26,3 +26,10 @@ Currently textual is one big binary that serves images over HTTP, but I'd like
 to eventually break it out into separate rendering and web-service crates.
 
 [fontster]: https://github.com/gennyble/fontster
+
+#### Compiling
+Textual expects `webfont.key` in the `src` directory. It's just a text file with
+an API key for Google's Web Fonts API. You can get one [here][webfonts]. The file
+should **not** have a trailing newline.
+
+[webfonts]: https://developers.google.com/fonts/docs/developer_api#APIKey
