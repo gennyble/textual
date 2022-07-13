@@ -363,6 +363,16 @@ impl Operation {
                 stripe_width: (text.fontsize / 8.0) as usize,
                 slope: 2.0,
             }))),
+            "ace" => Some(Visual::Pattern(Arc::new(Stripes {
+                colors: vec![
+                    Color::BLACK,
+                    Self::color("7f7f7f").unwrap(),
+                    Color::WHITE,
+                    Self::color("64349A").unwrap(),
+                ],
+                stripe_width: (text.fontsize / 8.0) as usize,
+                slope: 2.0,
+            }))),
             _ => None,
         }
     }
