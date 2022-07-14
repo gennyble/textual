@@ -119,10 +119,11 @@ impl Svc {
 			let provider = textual.font_provider.read().await;
 
 			let text = format!(
-				"{}\n\nimage sent: {}\nhtml sent: {}\nfonts in cache: {}",
+				"{}\n\nimage sent: {}\nhtml sent: {}\ntotal requests: {}\n\nfonts in cache: {}",
 				Utc::now().format("%H:%M UTC\n%a %B %-d %Y"),
 				bytes_to_human(stats.image()),
 				bytes_to_human(stats.html()),
+				stats.requests(),
 				provider.cached()
 			);
 
