@@ -155,7 +155,18 @@ impl Svc {
 		);
 
 		if query.has_bool("me") && !query.has_bool("forceraw") && !query.has_bool("info") {
-			let text = format!("IP: {}\n\nUser Agent\n{}", clientaddr, agent);
+			let referrer = match req.headers().get(hyper::header::REFERER) {
+				None => "unknown",
+				Some(hv) => match hv.to_str() {
+					Ok(hstring) => hstring,
+					Err(e) => "unknown",
+				},
+			};
+
+			let text = format!(
+				"IP: {}\n\nUser Agent\n{}\n\nReferrer\n{}",
+				clientaddr, agent, referrer
+			);
 
 			let font = match query.get_first_value("font") {
 				Some(font) => format!("font={}&", font),
