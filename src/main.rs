@@ -8,301 +8,303 @@ mod statistics;
 mod text;
 
 use std::{
-    cell::Cell,
-    collections::HashMap,
-    convert::TryInto,
-    net::{TcpListener, TcpStream},
-    time::Instant,
+	cell::Cell,
+	collections::HashMap,
+	convert::{Infallible, TryInto},
+	future::Future,
+	net::{SocketAddr, TcpListener, TcpStream},
+	pin::Pin,
+	str::FromStr,
+	task::{Context, Poll},
+	time::Instant,
 };
 
+use bempline::Document;
 use chrono::Utc;
 use crateimage::png::PngEncoder;
 use fontprovider::FontProvider;
+use hyper::{body::HttpBody, service::Service, Body, Request, Response, Server};
+use mavourings::query::Query;
 use serde::Serialize;
-use small_http::{Connection, ConnectionError, Query, QueryParseError, Response};
-use smol::{
-    lock::{Mutex, RwLock},
-    Async,
-};
 use std::sync::Arc;
 use text::{Operation, Text};
 use thiserror::Error;
-use tinytemplate::TinyTemplate;
+use tokio::sync::RwLock;
 
 use crate::config::Config;
 use crate::statistics::Statistics;
 
 struct Textual {
-    config: Config,
-    statistics: RwLock<Statistics>,
-    font_provider: RwLock<FontProvider>,
+	config: Config,
+	statistics: RwLock<Statistics>,
+	font_provider: RwLock<FontProvider>,
 }
 
-fn main() {
-    let config = match Config::get() {
-        Ok(Some(c)) => c,
-        Ok(None) => return,
-        Err(e) => {
-            println!("{}", e);
-            std::process::exit(1);
-        }
-    };
-
-    let provider =
-        FontProvider::google(config.font_cache_path(), include_str!("webfont.key")).unwrap();
-
-    let textual = Textual {
-        config,
-        font_provider: RwLock::new(provider),
-        statistics: RwLock::new(Statistics::default()),
-    };
-
-    let listener =
-        Async::<TcpListener>::bind((textual.config.listen(), textual.config.port())).unwrap();
-
-    smol::block_on(listen(Arc::new(textual), listener))
+struct MakeSvc {
+	textual: Arc<Textual>,
 }
 
-async fn listen(textual: Arc<Textual>, listener: Async<TcpListener>) {
-    loop {
-        let (stream, _clientaddr) = listener.accept().await.unwrap();
-        let task = smol::spawn(error_handler(textual.clone(), stream));
-        task.detach();
-    }
+impl<T> Service<T> for MakeSvc {
+	type Response = Svc;
+	type Error = &'static str;
+	type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+
+	fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+		Poll::Ready(Ok(()))
+	}
+
+	fn call(&mut self, _: T) -> Self::Future {
+		let textual = self.textual.clone();
+		let fut = async move { Ok(Svc { textual }) };
+		Box::pin(fut)
+	}
 }
 
-async fn error_handler(textual: Arc<Textual>, stream: Async<TcpStream>) {
-    let mut connection = Connection::new(stream);
-
-    let response = match serve(textual.clone(), &mut connection).await {
-        Ok(resp) => resp,
-        Err(e) => Response::builder()
-            .header("content-type", "text/plain")
-            .body(e.to_string().as_bytes().to_vec())
-            .unwrap(),
-    };
-
-    match response.headers().get("content-type").map(|hv| hv.to_str()) {
-        Some(Ok(mime)) => {
-            let mut stats = textual.statistics.write().await;
-            stats.add(mime, response.body().len());
-        }
-        _ => {
-            //TODO: Maybe print here that the content-type was unset or could not be parsed as a string
-        }
-    }
-
-    connection
-        .respond(response)
-        .await
-        .expect("Failed to respond to connection")
+struct Svc {
+	textual: Arc<Textual>,
 }
 
-async fn serve(
-    textual: Arc<Textual>,
-    con: &mut Connection,
-) -> Result<Response<Vec<u8>>, ServiceError> {
-    let request = con.request().await?.unwrap();
+impl Service<Request<Body>> for Svc {
+	type Response = Response<Body>;
+	type Error = &'static str;
+	type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
-    // Return the tool page if the query string is empty or not there at all
-    let mut query_str = match request.uri().query() {
-        None => return Ok(serve_tool()?),
-        Some(query_str) if query_str.is_empty() => return Ok(serve_tool()?),
-        Some(query_str) => query_str.to_owned(),
-    };
+	fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+		Poll::Ready(Ok(()))
+	}
 
-    let query: Query = query_str.parse()?;
-
-    // if we have `info` and `forceraw` then we should pass this by; we're
-    // generating the `info` image itself if that's the case
-    if query.has_bool("info") && !query.has_bool("forceraw") {
-        let stats = textual.statistics.read().await;
-        let provider = textual.font_provider.read().await;
-
-        let text = format!(
-            "{}\n\nimage sent: {}\nhtml sent: {}\nfonts in cache: {}",
-            Utc::now().format("%H:%M UTC\n%a %B %-d %Y"),
-            bytes_to_human(stats.image()),
-            bytes_to_human(stats.html()),
-            provider.cached()
-        );
-
-        let font = match query.get_first_value("font") {
-            Some(font) => format!("font={}&", font),
-            None => String::new(),
-        };
-
-        query_str = format!(
-            "{}fs=32&c=black&bc=eed&lh=font&text={}",
-            font,
-            Query::url_encode(&text)
-        );
-    }
-
-    let agent = request
-        .headers()
-        .get("user-agent")
-        .unwrap()
-        .to_str()
-        .unwrap();
-
-    let clientaddr = request
-        .headers()
-        .get("X-Forwarded-For")
-        .map(|h| h.to_str().unwrap_or("unknown"))
-        .unwrap_or("unknown");
-
-    println!(
-        "connection: {}\n\tua: {}\n\tpath: {}",
-        clientaddr,
-        agent,
-        request.uri().path_and_query().unwrap().to_string()
-    );
-
-    if query.has_bool("me") && !query.has_bool("forceraw") && !query.has_bool("info") {
-        let text = format!("IP: {}\n\nUser Agent\n{}", clientaddr, agent);
-
-        let font = match query.get_first_value("font") {
-            Some(font) => format!("font={}&", font),
-            None => String::new(),
-        };
-
-        query_str = format!(
-            "{}fs=32&c=black&bc=eed&lh=font&text={}",
-            font,
-            Query::url_encode(&text)
-        );
-    }
-
-    let text: Operation = query.into();
-
-    // Find the hostname we should use for the image link in the opengraph tags
-    let host = textual
-        .config
-        .meta_host()
-        .or(request
-            .headers()
-            .get("host")
-            .map(|hv| hv.to_str().ok())
-            .flatten())
-        .unwrap_or("localhost");
-
-    let scheme = textual
-        .config
-        .scheme()
-        .or(request.uri().scheme_str())
-        .unwrap_or(if host == "localhost" { "http" } else { "https" });
-
-    if text.forceraw {
-        // Image
-        Ok(make_image(textual, text).await?)
-    } else {
-        let link = format!("{}://{}?{}&forceraw", scheme, host, query_str);
-        Ok(make_meta(textual, text, link).await?)
-    }
+	fn call(&mut self, req: Request<Body>) -> Self::Future {
+		let tex = self.textual.clone();
+		Box::pin(async { Ok(Self::task(req, tex).await) })
+	}
 }
 
-fn serve_tool() -> Result<Response<Vec<u8>>, ConnectionError> {
-    let html = std::fs::read_to_string("tool.html")?.into_bytes();
+impl Svc {
+	async fn task(req: Request<Body>, textual: Arc<Textual>) -> Response<Body> {
+		let response = match Self::serve(req, textual.clone()).await {
+			Ok(resp) => resp,
+			Err(e) => Response::builder()
+				.header("content-type", "text/plain")
+				.body(Body::from(e.to_string()))
+				.unwrap(),
+		};
 
-    Response::builder()
-        .header("content-type", "text/html")
-        .header("content-length", html.len())
-        .body(html)
-        .map_err(|e| ConnectionError::UnknownError(e))
+		match response.headers().get("content-type").map(|hv| hv.to_str()) {
+			Some(Ok(mime)) => {
+				let mut stats = textual.statistics.write().await;
+				//TODO: gen- check exact or log upper instead?
+				stats.add(mime, response.body().size_hint().lower() as usize);
+			}
+			_ => {
+				//TODO: Maybe print here that the content-type was unset or could not be parsed as a string
+			}
+		}
+
+		response
+	}
+
+	async fn serve(
+		req: Request<Body>,
+		textual: Arc<Textual>,
+	) -> Result<Response<Body>, Infallible> {
+		let mut query_str = match req.uri().query() {
+			None => return Ok(Self::serve_tool().await),
+			Some(s) if s.is_empty() => return Ok(Self::serve_tool().await),
+			Some(s) => s.to_owned(),
+		};
+		let query: Query = query_str.parse().unwrap();
+
+		if query.has_bool("info") && !query.has_bool("forceraw") {
+			let stats = textual.statistics.read().await;
+			let provider = textual.font_provider.read().await;
+
+			let text = format!(
+				"{}\n\nimage sent: {}\nhtml sent: {}\nfonts in cache: {}",
+				Utc::now().format("%H:%M UTC\n%a %B %-d %Y"),
+				bytes_to_human(stats.image()),
+				bytes_to_human(stats.html()),
+				provider.cached()
+			);
+
+			let font = match query.get_first_value("font") {
+				Some(font) => format!("font={}&", font),
+				None => String::new(),
+			};
+
+			query_str = format!(
+				"{}fs=32&c=black&bc=eed&lh=font&text={}",
+				font,
+				Query::url_encode(&text)
+			);
+		}
+
+		let agent = req.headers().get("user-agent").unwrap().to_str().unwrap();
+
+		let clientaddr = req
+			.headers()
+			.get("X-Forwarded-For")
+			.map(|h| h.to_str().unwrap_or("unknown"))
+			.unwrap_or("unknown");
+
+		println!(
+			"connection: {}\n\tua: {}\n\tpath: {}",
+			clientaddr,
+			agent,
+			req.uri().path_and_query().unwrap().to_string()
+		);
+
+		if query.has_bool("me") && !query.has_bool("forceraw") && !query.has_bool("info") {
+			let text = format!("IP: {}\n\nUser Agent\n{}", clientaddr, agent);
+
+			let font = match query.get_first_value("font") {
+				Some(font) => format!("font={}&", font),
+				None => String::new(),
+			};
+
+			query_str = format!(
+				"{}fs=32&c=black&bc=eed&lh=font&text={}",
+				font,
+				Query::url_encode(&text)
+			);
+		}
+
+		let text: Operation = query.into();
+
+		// Find the hostname we should use for the image link in the opengraph tags
+		let host = textual
+			.config
+			.meta_host()
+			.or(req
+				.headers()
+				.get("host")
+				.map(|hv| hv.to_str().ok())
+				.flatten())
+			.unwrap_or("localhost");
+
+		let scheme = textual
+			.config
+			.scheme()
+			.or(req.uri().scheme_str())
+			.unwrap_or(if host == "localhost" { "http" } else { "https" });
+
+		if text.forceraw {
+			// Image
+			Ok(make_image(textual, text).await?)
+		} else {
+			let link = format!("{}://{}?{}&forceraw", scheme, host, query_str);
+			Ok(make_meta(textual, text, link).await?)
+		}
+	}
+
+	async fn serve_tool() -> Response<Body> {
+		mavourings::file_string_reply("tool.html").await.unwrap()
+	}
+}
+
+#[tokio::main]
+async fn main() {
+	let config = match Config::get() {
+		Ok(Some(c)) => c,
+		Ok(None) => return,
+		Err(e) => {
+			println!("{}", e);
+			std::process::exit(1);
+		}
+	};
+
+	let provider =
+		FontProvider::google(config.font_cache_path(), include_str!("webfont.key")).unwrap();
+
+	let address = SocketAddr::new(config.listen(), config.port());
+	let textual = Textual {
+		config,
+		font_provider: RwLock::new(provider),
+		statistics: RwLock::new(Statistics::default()),
+	};
+
+	Server::bind(&address)
+		.serve(MakeSvc {
+			textual: Arc::new(textual),
+		})
+		.await
+		.unwrap();
 }
 
 fn bytes_to_human(bytes: usize) -> String {
-    let mut bytes = bytes as f32;
-    let mut suffix = "B";
+	let mut bytes = bytes as f32;
+	let mut suffix = "B";
 
-    if bytes >= 1024.0 {
-        bytes /= 1024.0;
-        suffix = "KB";
-    }
+	if bytes >= 1024.0 {
+		bytes /= 1024.0;
+		suffix = "KB";
+	}
 
-    if bytes >= 1024.0 {
-        bytes /= 1024.0;
-        suffix = "MB";
-    }
+	if bytes >= 1024.0 {
+		bytes /= 1024.0;
+		suffix = "MB";
+	}
 
-    if bytes >= 1024.0 {
-        bytes /= 1024.0;
-        suffix = "GB";
-    }
+	if bytes >= 1024.0 {
+		bytes /= 1024.0;
+		suffix = "GB";
+	}
 
-    format!("{} {}", (bytes * 10.0).ceil() / 10.0, suffix)
+	format!("{} {}", (bytes * 10.0).ceil() / 10.0, suffix)
 }
 
-async fn make_image(
-    textual: Arc<Textual>,
-    op: Operation,
-) -> Result<Response<Vec<u8>>, ConnectionError> {
-    let image = op.make_image(&textual.font_provider).await;
+async fn make_image(textual: Arc<Textual>, op: Operation) -> Result<Response<Body>, Infallible> {
+	let image = op.make_image(&textual.font_provider).await;
 
-    let mut encoded_buffer = vec![];
+	let mut encoded_buffer = vec![];
 
-    let encoder = PngEncoder::new(&mut encoded_buffer);
-    encoder
-        .encode(
-            image.data(),
-            image.width() as u32,
-            image.height() as u32,
-            crateimage::ColorType::Rgba8,
-        )
-        .unwrap();
+	let encoder = PngEncoder::new(&mut encoded_buffer);
+	encoder
+		.encode(
+			image.data(),
+			image.width() as u32,
+			image.height() as u32,
+			crateimage::ColorType::Rgba8,
+		)
+		.unwrap();
 
-    Response::builder()
-        .header("content-type", "image/png")
-        .header("content-length", encoded_buffer.len())
-        .body(encoded_buffer)
-        .map_err(|e| ConnectionError::UnknownError(e))
+	Response::builder()
+		.header("content-type", "image/png")
+		.header("content-length", encoded_buffer.len())
+		.body(Body::from(encoded_buffer))
+		.map_err(|e| panic!())
 }
 
 static TEMPLATE: &'static str = include_str!("template.htm");
 
 #[derive(Debug, Serialize)]
 struct Meta {
-    text: String,
-    twitter_image: String,
-    og_image: String,
-    image: String,
-    font: String,
-    hex_color: String,
+	text: String,
+	twitter_image: String,
+	og_image: String,
+	image: String,
+	font: String,
+	hex_color: String,
 }
 
 async fn make_meta(
-    textual: Arc<Textual>,
-    op: Operation,
-    link: String,
-) -> Result<Response<Vec<u8>>, ConnectionError> {
-    let buffer = {
-        let mut tt = TinyTemplate::new();
-        tt.add_template("html", TEMPLATE).unwrap();
+	textual: Arc<Textual>,
+	op: Operation,
+	link: String,
+) -> Result<Response<Body>, Infallible> {
+	let mut t = Document::from_str(TEMPLATE).unwrap();
 
-        let content = Meta {
-            text: op.full_text(),
-            twitter_image: format!("{}&aspect=1.8", link),
-            og_image: format!("{}&aspect=1.8", link),
-            image: link,
-            font: String::new(),
-            hex_color: String::new(),
-        };
+	t.set("text", op.full_text());
+	t.set("twitter_image", format!("{}&aspect=1.8", link));
+	t.set("og_image", format!("{}&aspect=1.8", link));
+	t.set("image", link);
+	t.set("font", String::new());
+	t.set("hex_color", String::new());
 
-        tt.render("html", &content).unwrap().into_bytes()
-    };
+	let render = t.compile();
 
-    Response::builder()
-        .header("content-type", "text/html")
-        .header("content-length", buffer.len())
-        .body(buffer)
-        .map_err(|e| ConnectionError::UnknownError(e))
-}
-
-#[derive(Debug, Error)]
-enum ServiceError {
-    #[error("{0}")]
-    ClientError(#[from] ConnectionError),
-    #[error("your query string did not make sense: {0}")]
-    QueryError(#[from] QueryParseError),
+	Response::builder()
+		.header("content-type", "text/html")
+		.header("content-length", render.len())
+		.body(Body::from(render))
+		.map_err(|e| panic!())
 }
