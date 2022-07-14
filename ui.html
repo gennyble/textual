@@ -1,0 +1,147 @@
+<html>
+
+<head>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Textual</title>
+	<style>
+		* {
+			box-sizing: border-box;
+		}
+
+		code {
+			display: inline-block;
+			background-color: #ddd;
+			padding: 2px 0.25rem;
+			border-radius: 4px;
+		}
+
+		main {
+			width: 100%;
+		}
+
+		section {
+			text-align: justify;
+		}
+
+		div>h1 {
+			font-weight: inherit;
+			font-size: 1rem;
+			padding-bottom: 0;
+			margin: 0;
+		}
+
+		div>p {
+			margin-top: 0.5rem;
+		}
+
+		#authored {
+			display: block;
+			width: 80%;
+			margin: 0 auto;
+			color: #333;
+			text-align: right
+		}
+
+		a {
+			color: inherit;
+			border-bottom: 1px dashed black;
+			text-decoration: none;
+		}
+
+		a:hover {
+			background-color: #3a8;
+			border-bottom: 1px solid #d09ae9;
+		}
+
+		a:active {
+			background-color: #d09ae9;
+			border: none;
+		}
+
+		@media (max-width: 40rem) {
+			body {
+				padding: 1.5rem 0;
+			}
+
+			main {
+				padding: 0 1rem;
+				margin: 0 auto;
+			}
+
+			section {
+				width: 100%;
+			}
+
+			div {
+				width: 100%;
+			}
+
+			#authored {
+				width: 100%;
+			}
+		}
+
+		@media (min-width: 40rem) {
+			body {
+				padding: 3rem 0;
+			}
+
+			section {
+				display: block;
+
+				width: 36rem;
+
+				margin: 0 auto;
+			}
+		}
+	</style>
+	<script>
+		function preview(event) {
+			let preview = document.getElementById('previewImage');
+
+			let text = document.getElementById('text').value;
+
+			let previewString = `/?color=black&text=${encodeURI(text)}&forceraw`;
+
+			preview.src = previewString;
+
+			event.preventDefault();
+		}
+
+		window.onload = function onload() {
+			document.getElementById('controls').addEventListener('submit', preview);
+		}
+
+		function copyImageLink() {
+			navigator.clipboard.writeText(document.getElementById('previewImage').src);
+		}
+	</script>
+</head>
+
+<body>
+	<main>
+		<section id="foreword">
+			<h1 style="margin: 0px; padding: 0px">BLTUI</h1>
+			<h2 style="margin: 0px; padding: 0px; font-size:1rem; color: #98a">bad little textual user
+				interface</h2>
+		</section>
+		<section>
+			<image style="width: 50%; border: 1px solid black;" id="previewImage"
+				src="/?color=black&text=Preview%21&forceraw">
+				<form action="" id="controls">
+					<input type="text" id="text" value="Preview!">
+					<input type="submit" value="Show Preview">
+				</form>
+				<input type="button" value="Copy image link" onclick="copyImageLink()" />
+		</section>
+		<div id="authored">
+			<p>
+				authored by <a href="https://nyble.dev">Genny Z</a>
+				<br>
+				<a href="https://github.com/gennyble/textual">source</a>
+			</p>
+		</div>
+	</main>
+</body>
+
+</html>
