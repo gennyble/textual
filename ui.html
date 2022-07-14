@@ -79,6 +79,10 @@
 			#authored {
 				width: 100%;
 			}
+
+			#previewImage {
+				width: 100%;
+			}
 		}
 
 		@media (min-width: 40rem) {
@@ -92,6 +96,10 @@
 				width: 36rem;
 
 				margin: 0 auto;
+			}
+
+			#previewImage {
+				width: 50%;
 			}
 		}
 	</style>
@@ -126,8 +134,7 @@
 				interface</h2>
 		</section>
 		<section>
-			<image style="width: 50%; border: 1px solid black;" id="previewImage"
-				src="/?color=black&text=Preview%21&forceraw">
+			<image style="border: 1px solid black;" id="previewImage" src="/?color=black&text=Preview%21&forceraw">
 				<form action="" id="controls">
 					<input type="text" id="text" value="Preview!">
 					<input type="submit" value="Show Preview">
