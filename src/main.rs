@@ -107,6 +107,11 @@ impl Svc {
 		req: Request<Body>,
 		textual: Arc<Textual>,
 	) -> Result<Response<Body>, Infallible> {
+		//TODO: gen- Look at the path properly
+		if req.uri().path().contains("ui") {
+			return Ok(mavourings::file_string_reply("ui.html").await.unwrap());
+		}
+
 		let mut query_str = match req.uri().query() {
 			None => return Ok(Self::serve_tool().await),
 			Some(s) if s.is_empty() => return Ok(Self::serve_tool().await),
