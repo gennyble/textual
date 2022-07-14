@@ -306,6 +306,7 @@ async fn make_meta(
 	let mut t = Document::from_str(TEMPLATE).unwrap();
 
 	t.set("text", op.full_text());
+	t.set("alt", op.get_alt());
 	t.set("twitter_image", format!("{}&aspect=1.8", link));
 	t.set("og_image", format!("{}&aspect=1.8", link));
 	t.set("image", link);

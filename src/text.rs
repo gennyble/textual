@@ -458,6 +458,36 @@ impl Operation {
 			_ => (),
 		}
 	}
+
+	pub fn get_alt(&self) -> String {
+		match self.get_fonts_if_same() {
+			None | Some(None) => self.full_text(),
+			Some(Some(font)) => format!("'{}' in the font {}", self.full_text(), font),
+		}
+	}
+
+	/// If all fonts are the same in the operation, get what the font is
+	///
+	/// # Returns
+	/// `None` if the fonts differ  
+	/// `Some(None)` if the fonts are all the default
+	/// `Some(Some(String))` with the name of the font if they're all the same
+	fn get_fonts_if_same(&self) -> Option<Option<String>> {
+		match self.texts.len() {
+			0 | 1 => Some(None),
+			_ => {
+				let font = self.texts[0].font.clone();
+
+				for text in self.texts.iter().skip(1) {
+					if font != text.font {
+						return None;
+					}
+				}
+
+				Some(font)
+			}
+		}
+	}
 }
 
 impl From<Query> for Operation {
