@@ -229,8 +229,7 @@ async fn main() {
 		}
 	};
 
-	let provider =
-		FontProvider::google(config.font_cache_path(), include_str!("webfont.key")).unwrap();
+	let provider = FontProvider::new(config.font_cache_path(), include_str!("webfont.key"));
 
 	let address = SocketAddr::new(config.listen(), config.port());
 	let textual = Textual {

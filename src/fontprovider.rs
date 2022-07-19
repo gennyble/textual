@@ -157,12 +157,14 @@ pub struct FontProvider {
 }
 
 impl FontProvider {
-	fn new<P: AsRef<Path>>(fontcache: P) -> Self {
+	pub fn new<P: AsRef<Path>>(fontcache: P, google_fonts_apikey: &str) -> Self {
+		let google = get_fonts_from_google(google_fonts_apikey).unwrap();
+
 		Self {
 			default: Arc::new(
 				fontster::parse_font(include_bytes!("../Cabin-Regular.ttf")).unwrap(),
 			),
-			fonts: vec![],
+			fonts: google,
 			font_cache: FontCache::new(fontcache.as_ref()).unwrap(),
 		}
 	}
@@ -250,7 +252,7 @@ fn get_fonts_from_google<S: AsRef<str>>(apikey: S) -> Result<Vec<FontFamily>, ur
 				FontVariant::default()
 			} else if let Some(weight) = style.strip_suffix("italic") {
 				// ...###italic where ### is a weight, like 400
-				FontVariant::new(weight.parse().unwrap(), FontStyle::Italic)
+				FontVariant::new(weight.parse().unwrap_or_default(), FontStyle::Italic)
 			} else {
 				// ...just the weight
 				FontVariant::with_weight(style.parse().unwrap())
