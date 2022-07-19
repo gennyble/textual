@@ -385,7 +385,7 @@ pub enum FontWeight {
 	SemiBold,
 	Bold,
 	ExtraBold,
-	Heavy,
+	Black,
 	ExtraBlack,
 }
 
@@ -400,7 +400,7 @@ impl FontWeight {
 			FontWeight::SemiBold => 600,
 			FontWeight::Bold => 700,
 			FontWeight::ExtraBold => 800,
-			FontWeight::Heavy => 900,
+			FontWeight::Black => 900,
 			FontWeight::ExtraBlack => 950,
 		}
 	}
@@ -430,7 +430,7 @@ impl FromStr for FontWeight {
 			"extrabold" | "extra-bold" | "ultrabold" | "ultra-bold" | "800" => {
 				Ok(FontWeight::ExtraBold)
 			}
-			"heavy" | "900" => Ok(FontWeight::Heavy),
+			"black" | "heavy" | "900" => Ok(FontWeight::Black),
 			"extrablack" | "extra-black" | "ultrablack" | "ultra-black" | "950" => {
 				Ok(FontWeight::ExtraBlack)
 			}
@@ -452,7 +452,7 @@ impl fmt::Display for FontWeight {
 			FontWeight::SemiBold => "semibold",
 			FontWeight::Bold => "bold",
 			FontWeight::ExtraBold => "extrabold",
-			FontWeight::Heavy => "heavy",
+			FontWeight::Black => "black",
 			FontWeight::ExtraBlack => "extrablack",
 		};
 
