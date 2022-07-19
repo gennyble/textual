@@ -9,6 +9,7 @@ use tokio::sync::RwLock;
 
 use crate::{
 	color::Color,
+	fontprovider::{FontStyle, FontVariant, FontWeight},
 	image::{ColorProvider, Colors, Image, Mask, Stripes},
 	FontProvider,
 };
@@ -28,12 +29,12 @@ impl From<Color> for Visual {
 #[derive(Clone, PartialEq)]
 struct FontFace {
 	typeface: String,
-	varient: String,
+	variant: FontVariant,
 }
 
 impl FontFace {
-	pub fn new(typeface: String, varient: String) -> Self {
-		Self { typeface, varient }
+	pub fn new(typeface: String, variant: FontVariant) -> Self {
+		Self { typeface, variant }
 	}
 }
 
@@ -42,7 +43,8 @@ impl FontFace {
 pub struct Text {
 	pub text: String,
 	pub font: Option<String>,
-	pub varient: Option<String>,
+	pub font_weight: Option<FontWeight>,
+	pub font_style: Option<FontStyle>,
 	pub fontsize: f32,
 
 	pub visual: Visual,
@@ -53,7 +55,8 @@ impl Default for Text {
 		Self {
 			text: String::new(),
 			font: None,
-			varient: None,
+			font_weight: None,
+			font_style: None,
 			fontsize: 128.0,
 
 			visual: Color::WHITE.into(),
@@ -64,14 +67,22 @@ impl Default for Text {
 impl Text {
 	async fn get_font(&self, fp: &RwLock<FontProvider>) -> Arc<Font> {
 		if let Some(font) = self.font.as_deref() {
-			let varient = self.varient.as_deref().unwrap_or("regular");
+			let varient = self.font_variant();
+
 			return {
 				let mut provider = fp.write().await;
-				provider.varient(font, varient)
+				provider.variant(font, varient)
 			};
 		}
 
 		fp.read().await.default_font()
+	}
+
+	pub fn font_variant(&self) -> FontVariant {
+		let weight = self.font_weight.unwrap_or_default();
+		let style = self.font_style.unwrap_or_default();
+
+		FontVariant::new(weight, style)
 	}
 }
 
@@ -119,10 +130,8 @@ impl Operation {
 
 		let mut layout = Layout::new(settings);
 		for text in &self.texts {
-			let fontface = FontFace::new(
-				text.font.clone().unwrap_or_default(),
-				text.varient.clone().unwrap_or("regular".into()),
-			);
+			let fontface =
+				FontFace::new(text.font.clone().unwrap_or_default(), text.font_variant());
 
 			// This hell-of-a-thing looks through our font vector. If it's already in there,
 			// we don't add it again and get it's index. If it's not, we push it and get the
@@ -424,7 +433,12 @@ impl Operation {
 				self.texts.push(next);
 			}
 			"font" => current.font = Some(value),
-			"varient" => current.varient = Some(value),
+			"weight" | "fontweight" => {
+				current.font_weight = value.parse().map(|v| Some(v)).unwrap_or(None)
+			}
+			"style" | "fontstyle" => {
+				current.font_style = value.parse().map(|v| Some(v)).unwrap_or(None)
+			}
 			"fs" | "fontsize" => {
 				current.fontsize = value.parse().unwrap_or(Text::default().fontsize)
 			}
