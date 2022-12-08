@@ -214,7 +214,6 @@ dependencies = [
 [[package]]
 name = "fontster"
 version = "0.1.0"
-source = "git+https://github.com/gennyble/fontster?branch=main#15ee44e27d18d5fd8129c9be253315044abab34c"
 dependencies = [
  "fontdue",
  "thiserror",

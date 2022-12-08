@@ -17,7 +17,7 @@ ureq = "2"
 serde_json = "1.0.64"
 
 image = "0.23"
-fontster = { git = "https://github.com/gennyble/fontster", branch = "main" }
+fontster = { path = "../fontster" }#{ git = "https://github.com/gennyble/fontster", branch = "main" }
 
 hyper = { version = "0.14", features = ["full"] }
 bempline = "0.4"
