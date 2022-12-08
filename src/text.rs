@@ -276,11 +276,10 @@ impl Operation {
 	}
 
 	fn color<S: AsRef<str>>(s: S) -> Option<Color> {
-		let s = if s.as_ref().starts_with('#') {
-			&s.as_ref()[1..]
-		} else {
-			s.as_ref()
-		};
+		// NOTE: gen, you tried removing a # prefix here before. The problem is
+		// either in how we get the query from the URI or the browser isn't
+		// sending us the fragment (bit after the #).
+		let s = s.as_ref();
 
 		match s {
 			"transparent" => return Some(Color::TRANSPARENT),
@@ -353,11 +352,11 @@ impl Operation {
 		}
 	}
 
-	fn pattern<P: AsRef<str>>(text: &Text, string: P) -> Option<Visual> {
+	fn pattern<P: AsRef<str>>(fontsize: f32, string: P) -> Option<Visual> {
 		match string.as_ref() {
 			"trans" => Some(Visual::Pattern(Arc::new(Stripes {
 				colors: vec![(85, 205, 252).into(), Color::WHITE, (247, 168, 184).into()],
-				stripe_width: (text.fontsize / 8.0) as usize,
+				stripe_width: (fontsize / 8.0) as usize,
 				slope: 2.0,
 			}))),
 			"enby" => Some(Visual::Pattern(Arc::new(Stripes {
@@ -367,7 +366,7 @@ impl Operation {
 					(156, 89, 209).into(),
 					Color::BLACK,
 				],
-				stripe_width: (text.fontsize / 8.0) as usize,
+				stripe_width: (fontsize / 8.0) as usize,
 				slope: 2.0,
 			}))),
 			"ace" => Some(Visual::Pattern(Arc::new(Stripes {
@@ -377,9 +376,23 @@ impl Operation {
 					Color::WHITE,
 					Self::color("64349A").unwrap(),
 				],
-				stripe_width: (text.fontsize / 8.0) as usize,
+				stripe_width: (fontsize / 8.0) as usize,
 				slope: 2.0,
 			}))),
+			str if str.starts_with("stripe:") => {
+				//FIXME: This is weird and silently discards invalid colors
+				let joined_colors = str.strip_prefix("stripe:").unwrap();
+				let colors: Vec<Color> = joined_colors
+					.split(":")
+					.filter_map(|s| Self::color(s))
+					.collect();
+
+				Some(Visual::Pattern(Arc::new(Stripes {
+					colors,
+					stripe_width: (fontsize / 8.0) as usize,
+					slope: 2.0,
+				})))
+			}
 			_ => None,
 		}
 	}
@@ -444,7 +457,7 @@ impl Operation {
 				current.visual = Visual::Color(Self::color_or(Some(value), Color::WHITE))
 			}
 			"pattern" => {
-				if let Some(pat) = Self::pattern(&current, value) {
+				if let Some(pat) = Self::pattern(current.fontsize, value) {
 					current.visual = pat;
 				}
 			}
@@ -459,7 +472,7 @@ impl Operation {
 				self.bvisual = Visual::Color(Self::color_or(Some(value), Color::WHITE))
 			}
 			"bpattern" => {
-				if let Some(pat) = Self::pattern(&current, value) {
+				if let Some(pat) = Self::pattern(current.fontsize, value) {
 					self.bvisual = pat;
 				}
 			}
