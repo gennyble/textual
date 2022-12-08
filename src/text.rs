@@ -276,7 +276,13 @@ impl Operation {
 	}
 
 	fn color<S: AsRef<str>>(s: S) -> Option<Color> {
-		match s.as_ref() {
+		let s = if s.as_ref().starts_with('#') {
+			&s.as_ref()[1..]
+		} else {
+			s.as_ref()
+		};
+
+		match s {
 			"transparent" => return Some(Color::TRANSPARENT),
 			"black" => return Some(Color::BLACK),
 			"red" => return Some(Color::RED),
@@ -297,8 +303,8 @@ impl Operation {
 		};
 
 		// Maybe it's a full RGB hex?
-		if s.as_ref().len() == 6 {
-			let chars: Vec<char> = s.as_ref().chars().collect();
+		if s.len() == 6 {
+			let chars: Vec<char> = s.chars().collect();
 			let mut components: Vec<u8> = chars.chunks(2).filter_map(hexpair).collect();
 			components.push(255);
 
@@ -308,8 +314,8 @@ impl Operation {
 		}
 
 		// Full RGBA hex?
-		if s.as_ref().len() == 8 {
-			let chars: Vec<char> = s.as_ref().chars().collect();
+		if s.len() == 8 {
+			let chars: Vec<char> = s.chars().collect();
 			let components: Vec<u8> = chars.chunks(2).filter_map(hexpair).collect();
 
 			if let Ok(clr) = Color::try_from(&components[..]) {
@@ -318,12 +324,8 @@ impl Operation {
 		}
 
 		// Half RGB hex?
-		if s.as_ref().len() == 3 {
-			let mut components: Vec<u8> = s
-				.as_ref()
-				.chars()
-				.filter_map(|c| hexpair(&[c, c]))
-				.collect();
+		if s.len() == 3 {
+			let mut components: Vec<u8> = s.chars().filter_map(|c| hexpair(&[c, c])).collect();
 			components.push(255);
 
 			if let Ok(clr) = Color::try_from(&components[..]) {
@@ -332,12 +334,8 @@ impl Operation {
 		}
 
 		// Half RGBA hex?
-		if s.as_ref().len() == 4 {
-			let components: Vec<u8> = s
-				.as_ref()
-				.chars()
-				.filter_map(|c| hexpair(&[c, c]))
-				.collect();
+		if s.len() == 4 {
+			let components: Vec<u8> = s.chars().filter_map(|c| hexpair(&[c, c])).collect();
 
 			if let Ok(clr) = Color::try_from(&components[..]) {
 				return Some(clr);

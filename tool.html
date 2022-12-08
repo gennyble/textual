@@ -23,7 +23,7 @@
 			text-align: justify;
 		}
 
-		div>h1 {
+		div>h2 {
 			font-weight: inherit;
 			font-size: 1rem;
 			padding-bottom: 0;
@@ -35,9 +35,14 @@
 		}
 
 		#authored {
+			width: 80vw;
+			margin: 0 auto;
 			color: #333;
-			flex: 0 0 100%;
 			text-align: right
+		}
+
+		#authored>p {
+			display: inline-block;
 		}
 
 		a {
@@ -68,6 +73,42 @@
 			justify-content: center;
 		}
 
+		ul {
+			list-style: none;
+			margin-top: 0;
+			padding-left: 0;
+		}
+
+		#colors h2 {
+			margin: 0 auto;
+		}
+
+		#colors h3 {
+			margin: 0 0 0.5rem 0;
+			font-size: 1.25rem;
+			font-weight: normal;
+		}
+
+		#name-list {
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			list-style: none;
+			row-gap: 1px;
+			column-gap: 0.5rem;
+		}
+
+		#name-list li {
+			display: flex;
+			align-content: center;
+		}
+
+		#colors .preview {
+			display: inline-block;
+			width: 1rem;
+			height: 1rem;
+			margin: auto 0.5rem auto 0;
+		}
+
 		@media (max-width: 40rem) {
 			body {
 				padding: 1.5rem 0;
@@ -96,7 +137,8 @@
 				padding: 3rem 0;
 			}
 
-			#introduction {
+			#introduction,
+			.big {
 				display: block;
 
 				width: 36rem;
@@ -107,6 +149,18 @@
 			div {
 				width: 20rem;
 				flex: 0 1 14rem;
+			}
+
+			#colors {
+				display: flex;
+				/*justify-content: center;*/
+				flex-direction: row;
+				flex-wrap: wrap;
+				gap: 1rem;
+			}
+
+			#colors>h2 {
+				width: 100%;
 			}
 		}
 	</style>
@@ -131,95 +185,95 @@
 		</section>
 		<section id="parameters">
 			<div>
-				<h1><code>text</code></h1>
+				<h2><code>text</code></h2>
 				<p>
 					The text to draw. Parameters before this are applied to this text and parameters after this are
 					applied to the next text.
 				</p>
 			</div>
 			<div>
-				<h1><code>info</code></h1>
+				<h2><code>info</code></h2>
 				<p>
 					Ignore all other parameters and get some information on the server
 				</p>
 			</div>
 			<div>
-				<h1><code>me</code></h1>
+				<h2><code>me</code></h2>
 				<p>
 					Get information on how you appear to the server
 				</p>
 			</div>
 			<div>
-				<h1><code>forceraw</code></h1>
+				<h2><code>forceraw</code></h2>
 				<p>
 					Force the server to return the image instead of the HTML page.
 				</p>
 			</div>
 			<div>
-				<h1><code>font</code></h1>
+				<h2><code>font</code></h2>
 				<p>
 					Set the font to write subsequent <code>text</code> in.
 				</p>
 			</div>
 			<div>
-				<h1><code>weight</code>; <code>fontweight</code></h1>
+				<h2><code>weight</code>; <code>fontweight</code></h2>
 				<p>
 					What weight of font to use. Ex: thin, light, bold
 				</p>
 			</div>
 			<div>
-				<h1><code>style</code>; <code>fontstyle</code></h1>
+				<h2><code>style</code>; <code>fontstyle</code></h2>
 				<p>
 					What style of font to use. Ex: italic, oblique, normal
 				</p>
 			</div>
 			<div>
-				<h1><code>fs</code>; <code>fontsize</code></h1>
+				<h2><code>fs</code>; <code>fontsize</code></h2>
 				<p>
 					The size of the following <code>text</code>s in pixels
 				</p>
 			</div>
 			<div>
-				<h1><code>c</code>; <code>color</code>; <code>colour</code></h1>
+				<h2><code>c</code>; <code>color</code>; <code>colour</code></h2>
 				<p>
 					The color of the following <code>text</code>s. This will override
-					<code>pattern</code> if it was previously set. See <a href="#Color-formats">accepted color
+					<code>pattern</code> if it was previously set. See <a href="#colors">accepted color
 						formats</a>
 				</p>
 			</div>
 			<div>
-				<h1><code>pattern</code></h1>
+				<h2><code>pattern</code></h2>
 				<p>
 					Currently only accepts three pre-programmed pattern: trans, enby, ace. This will override
 					<code>color</code> if it was previously set.
 				</p>
 			</div>
 			<div>
-				<h1><code>align</code></h1>
+				<h2><code>align</code></h2>
 				<p>
 					Sets the alignment of every <code>text</code>. Accepted values are: right, center, left
 				</p>
 			</div>
 			<div>
-				<h1><code>aspect</code></h1>
+				<h2><code>aspect</code></h2>
 				<p>
 					Force the image into the specified aspect ratio. Accepts floats.
 				</p>
 			</div>
 			<div>
-				<h1><code>bc</code>; <code>bcolor</code>; <code>bcolour</code></h1>
+				<h2><code>bc</code>; <code>bcolor</code>; <code>bcolour</code></h2>
 				<p>
 					Background color. If set multiple times, the last one will be taken.
 				</p>
 			</div>
 			<div>
-				<h1><code>bpattern</code></h1>
+				<h2><code>bpattern</code></h2>
 				<p>
 					Overrides <code>bcolor</code>
 				</p>
 			</div>
 			<div>
-				<h1><code>pad</code></h1>
+				<h2><code>pad</code></h2>
 				<p>
 					Pad all sides of the image by this number of pixels
 				</p>
@@ -227,7 +281,7 @@
 			<div>
 				<!-- Line height is not ready yet -->
 				<!-- Why not? gen:2022-07-17 -->
-				<h1><code>lh</code>; <code>lineheight</code></h1>
+				<h2><code>lh</code>; <code>lineheight</code></h2>
 				<p>
 					Adjust the height of following <code>text</code>s lines. "font" will use the line height the font
 					suggests. "ratio 1.1" will multiple the fonts suggestion by 1.1
@@ -237,26 +291,50 @@
 				TODO:
 				- Section for colour format
 				- Describe pattern
-
-				Colour types:
-					Named
-						transparent, black, red, green, blue, yellow, fuchsia, magenta, aqua, cyan, white
-					#rrggbb
-					#rrggbbaa
-					#rgb
-					#rgba
 				
 				Patterns
 					trans
 					enby
+					ace
 			-->
-			<div id="authored">
-				<p>
-					authored by <a href="https://nyble.dev">Genny Z</a>
-					<br>
-					<a href="https://github.com/gennyble/textual">source</a>
-				</p>
-			</div>
+		</section>
+		<section id="colors" class="big">
+			<h2>Colors</h2>
+			<section>
+				<h3>Hex (# optional)</h3>
+				<ul style="list-style: square; padding-left: 1rem;">
+					<li><code>#rrggbb</code></li>
+					<li><code>#rrggbbaa</code></li>
+					<li><code>#rgb</code></li>
+					<li><code>#rgba</code></li>
+				</ul>
+			</section>
+			<section>
+				<h3>Named</h3>
+				<ul id="name-list">
+					<li style="grid-column: 1 / 3;"><code>transparent</code></li>
+					<li><span class="preview" style="background-color: black"></span><code>black</code></li>
+					<li><span class="preview" style="background-color: white"></span><code>white</code></li>
+					<li><span class="preview" style="background-color: #F00"></span><code>red</code></li>
+					<li><span class="preview" style="background-color: #0f0"></span><code>green</code></li>
+					<li><span class="preview" style="background-color: #00f"></span><code>blue</code></li>
+					<li><span class="preview" style="background-color: #ff0"></span><code>yellow</code></li>
+					<li><span class="preview" style="background-color: #f0f"></span><code
+							style="margin-right: 0.25rem">fuchsia</code>
+						<code>magenta</code>
+					</li>
+					<li><span class="preview" style="background-color: #0ff"></span><code
+							style="margin-right: 0.25rem">aqua</code><code>cyan</code>
+					</li>
+				</ul>
+			</section>
+		</section>
+		<section id="authored">
+			<p>
+				authored by <a href="https://nyble.dev">Genny Z</a>
+				<br>
+				<a href="https://github.com/gennyble/textual">source</a>
+			</p>
 		</section>
 	</main>
 </body>
