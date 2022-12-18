@@ -104,6 +104,37 @@
 		}
 	</style>
 	<script>
+		let textCount = 1;
+
+		function namedChild(dom, name) {
+			for (let child of dom.children) {
+				if (child.name === name) {
+					return child;
+				}
+			}
+		}
+
+		function resetControl(dom) {
+			let control = mapControl(dom);
+
+			control.text.dom.value = "";
+		}
+
+		function getControl(id) {
+			document.getElementById('text' + id)
+		}
+
+		function mapControl(control) {
+			let text = namedChild(control, "text");
+
+			return {
+				'text': {
+					'dom': text,
+					'value': text.value
+				}
+			};
+		}
+
 		function preview(event) {
 			let preview = document.getElementById('previewImage');
 
@@ -117,7 +148,11 @@
 		}
 
 		window.onload = function onload() {
-			document.getElementById('controls').addEventListener('submit', preview);
+			document.getElementsByClassName('controls')[0].addEventListener('submit', preview);
+		}
+
+		function newTextSegment() {
+			let first = getControl(0).cloneNode(true);
 		}
 
 		function copyImageLink() {
@@ -135,10 +170,10 @@
 		</section>
 		<section>
 			<image style="border: 1px solid black;" id="previewImage" src="/?color=black&text=Preview%21&forceraw">
-				<form action="" id="controls">
-					<input type="text" id="text" value="Preview!">
-					<input type="submit" value="Show Preview">
+				<form action="" class="controls" id="text0">
+					<input type="text" name="text" value="Preview!">
 				</form>
+				<input type="button" value="New Text Segment" onclick="newTextSegment()" />
 				<input type="button" value="Copy image link" onclick="copyImageLink()" />
 		</section>
 		<div id="authored">
