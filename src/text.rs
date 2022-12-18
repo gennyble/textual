@@ -1,4 +1,6 @@
-use std::{borrow::BorrowMut, convert::TryFrom, ops::DerefMut, sync::Arc};
+use std::{
+	borrow::BorrowMut, convert::TryFrom, fmt::Display, ops::DerefMut, str::FromStr, sync::Arc,
+};
 
 use fontster::{
 	Font, GlyphPosition, HorizontalAlign, Layout, LayoutSettings, LineHeight, StyledText,
@@ -451,7 +453,8 @@ impl Operation {
 				current.font_style = value.parse().map(|v| Some(v)).unwrap_or(None)
 			}
 			"fs" | "fontsize" => {
-				current.fontsize = value.parse().unwrap_or(Text::default().fontsize)
+				let fs: FontSize = value.parse().unwrap();
+				current.fontsize = fs.pixels(16) as f32;
 			}
 			"c" | "color" | "colour" => {
 				current.visual = Visual::Color(Self::color_or(Some(value), Color::WHITE))
@@ -524,5 +527,50 @@ impl From<Query> for Operation {
 		}
 
 		ret
+	}
+}
+
+pub enum FontSize {
+	Pixels(u32),
+	Point(f32),
+}
+
+impl FontSize {
+	pub fn pixels(&self, point_size: u32) -> u32 {
+		match self {
+			Self::Pixels(pix) => *pix,
+			Self::Point(pt) => (pt * point_size as f32) as u32,
+		}
+	}
+}
+
+impl FromStr for FontSize {
+	type Err = FontSizeParseError;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		if let Some(point) = s.strip_suffix("pt") {
+			Ok(FontSize::Point(FontSizeParseError::parse_value(point)?))
+		} else {
+			// Everything else failed, fallback to pixels
+			Ok(FontSize::Pixels(FontSizeParseError::parse_value(s)?))
+		}
+	}
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum FontSizeParseError {
+	#[error("core type failed to parse: {err}")]
+	ValueParseError { err: String },
+}
+
+impl FontSizeParseError {
+	pub fn parse_value<V>(raw: &str) -> Result<V, Self>
+	where
+		V: FromStr,
+		<V as FromStr>::Err: Display,
+	{
+		raw.parse().map_err(
+			|e: <V as FromStr>::Err| FontSizeParseError::ValueParseError { err: e.to_string() },
+		)
 	}
 }
