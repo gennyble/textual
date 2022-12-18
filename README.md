@@ -9,7 +9,7 @@ https://textual.pictures/?color=3a8&fs=512&font=Righteous&text=Textual%21
 
 <p align="center" style="width: 100%">
 
-<img style="width: 50%; display: inline-block; max-height: 15vh" src="https://textual.pictures/?color=3a8&fs=512&font=Righteous&text=Textual%21&forceraw" alt="Text, in the font Righteous, reading 'Textual!'">
+<img style="display: inline-block; max-height: 15vh" src="https://textual.pictures/?color=3a8&fs=512&font=Righteous&text=Textual%21&forceraw" alt="Text, in the font Righteous, reading 'Textual!'">
 
 </p>
 
