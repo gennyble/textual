@@ -1,33 +1,3 @@
-[package]
-name = "textualimagery"
-version = "0.1.0"
-authors = ["Genevieve Zenla <gen@nyble.dev>"]
-edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-thiserror = "1.0"
-confindent = "2.0.1"
-getopts = "0.2"
-chrono = "0.4"
-serde = { version = "1.0", features = ["derive"] }
-
-ureq = "2"
-serde_json = "1.0.64"
-
-image = "0.23"
-fontster = { path = "../fontster" }#{ git = "https://github.com/gennyble/fontster", branch = "main" }
-
-hyper = { version = "0.14", features = ["full"] }
-bempline = "0.4"
-
-[dependencies.mavourings]
-git = "https://github.com/gennyble/mavourings"
-branch = "main"
-default-features = false
-features = ["cookie", "send_file", "template"]
-
-[dependencies.tokio]
-version = "1"
-features = ["rt-multi-thread", "macros", "fs"]
+[workspace]
+members = ["textual", "server", "fastly", "fastly-backend"]
+resolver = "2"

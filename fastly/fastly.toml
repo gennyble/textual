@@ -1,0 +1,9 @@
+# This file describes a Fastly Compute@Edge package. To learn more visit:
+# https://developer.fastly.com/reference/fastly-toml/
+
+authors = ["gen@nyble.dev"]
+description = "Making images of text"
+language = "rust"
+manifest_version = 3
+name = "textual"
+service_id = "YVEzPNThrqJ7ZB6n0L5lw1"

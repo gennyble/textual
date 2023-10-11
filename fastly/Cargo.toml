@@ -1,0 +1,19 @@
+[package]
+name = "fastly-compute-project"
+version = "0.1.0"
+authors = []
+edition = "2018"
+# Remove this line if you want to be able to publish this crate as open source on crates.io.
+# Otherwise, `publish = false` prevents an accidental `cargo publish` from revealing private source.
+publish = false
+
+[profile.release]
+debug = 1
+
+[dependencies]
+anyhow = "1.0.75"
+fastly = "0.9.4"
+fontster = { git = "https://github.com/gennyble/fontster" }
+png = "0.17.10"
+serde_json = "1.0.107"
+thiserror = "1.0.49"
