@@ -1,8 +1,10 @@
 //! Default Compute@Edge template program.
 
+use std::convert::TryFrom;
 use std::sync::OnceLock;
 
 use anyhow::anyhow;
+use color::Color;
 use fastly::http::{header, Method, StatusCode};
 use fastly::{mime, Error, Request, Response};
 use fontster::{Font, Layout, LayoutSettings, StyledText};
@@ -10,6 +12,8 @@ use png::{BitDepth, ColorType, Encoder};
 
 const DOSIS_BYTES: &[u8] = include_bytes!("../Dosis-regular.otf");
 static DOSIS: OnceLock<Font> = OnceLock::new();
+
+mod color;
 
 /// The entry point for your application.
 ///
@@ -51,7 +55,7 @@ fn main(req: Request) -> Result<Response, Error> {
 	.send("textual_fonts")?;
 
 	if req.get_query_parameter("passthrough").is_some() {
-		println!("passing through");
+		println!("passing font through");
 		return Ok(backres);
 	}
 
@@ -61,11 +65,18 @@ fn main(req: Request) -> Result<Response, Error> {
 		.get_query_parameter("text")
 		.ok_or(anyhow!("what text do i draw?"))?;
 
-	let img = layout_image(&font_bytes, text);
+	let color = req
+		.get_query_parameter("color")
+		.or_else(|| req.get_query_parameter("colour"))
+		.or_else(|| req.get_query_parameter("c"))
+		.and_then(parse_color)
+		.unwrap_or(Color::WHITE);
+
+	let img = layout_image(&font_bytes, text, color);
 
 	let mut buf = vec![];
 	let mut enc = Encoder::new(&mut buf, img.width as u32, img.height as u32);
-	enc.set_color(ColorType::Grayscale);
+	enc.set_color(ColorType::Rgb);
 	enc.set_depth(BitDepth::Eight);
 	enc.write_header()?.write_image_data(&img.data)?;
 
@@ -85,7 +96,7 @@ struct Image {
 	data: Vec<u8>,
 }
 
-fn layout_image(font_bytes: &[u8], text: &str) -> Image {
+fn layout_image(font_bytes: &[u8], text: &str, color: Color) -> Image {
 	let font = fontster::parse_font(font_bytes).unwrap();
 	let mut layout = Layout::<()>::new(LayoutSettings::default());
 	layout.append(
@@ -100,7 +111,7 @@ fn layout_image(font_bytes: &[u8], text: &str) -> Image {
 
 	let width = layout.width().ceil() as usize + 32;
 	let height = layout.height().ceil() as usize + 32;
-	let mut image = vec![0; width * height];
+	let mut image = vec![0; width * height * 3];
 
 	for glyph in layout.glyphs() {
 		let (_, raster) = font.rasterize(glyph.c, glyph.font_size);
@@ -110,7 +121,13 @@ fn layout_image(font_bytes: &[u8], text: &str) -> Image {
 
 		for gy in 0..glyph.height {
 			for gx in 0..glyph.width {
-				image[(y + gy) * width + (x + gx)] = raster[gy * glyph.width + gx];
+				let img_idx = ((y + gy) * width + (x + gx)) * 3;
+				let grey = raster[gy * glyph.width + gx];
+				let color = color.scale_rgb(grey as f32 / 255.0);
+
+				image[img_idx] = color.r;
+				image[img_idx + 1] = color.g;
+				image[img_idx + 2] = color.b;
 			}
 		}
 	}
@@ -120,4 +137,73 @@ fn layout_image(font_bytes: &[u8], text: &str) -> Image {
 		height,
 		data: image,
 	}
+}
+
+fn parse_color<S: AsRef<str>>(s: S) -> Option<Color> {
+	// NOTE: gen, you tried removing a # prefix here before. The problem is
+	// either in how we get the query from the URI or the browser isn't
+	// sending us the fragment (bit after the #).
+	let s = s.as_ref();
+
+	match s {
+		"transparent" => return Some(Color::TRANSPARENT),
+		"black" => return Some(Color::BLACK),
+		"red" => return Some(Color::RED),
+		"green" => return Some(Color::GREEN),
+		"blue" => return Some(Color::BLUE),
+		"yellow" => return Some(Color::YELLOW),
+		"fuchsia" | "magenta" => return Some(Color::FUCHSIA),
+		"aqua" | "cyan" => return Some(Color::AQUA),
+		"white" => return Some(Color::WHITE),
+		_ => (),
+	}
+
+	let hexpair = |p: &[char]| -> Option<u8> {
+		if let (Some(u), Some(l)) = (p[0].to_digit(16), p[1].to_digit(16)) {
+			return Some((u * 16 + l) as u8);
+		}
+		None
+	};
+
+	// Maybe it's a full RGB hex?
+	if s.len() == 6 {
+		let chars: Vec<char> = s.chars().collect();
+		let mut components: Vec<u8> = chars.chunks(2).filter_map(hexpair).collect();
+		components.push(255);
+
+		if let Ok(clr) = Color::try_from(&components[..]) {
+			return Some(clr);
+		}
+	}
+
+	// Full RGBA hex?
+	if s.len() == 8 {
+		let chars: Vec<char> = s.chars().collect();
+		let components: Vec<u8> = chars.chunks(2).filter_map(hexpair).collect();
+
+		if let Ok(clr) = Color::try_from(&components[..]) {
+			return Some(clr);
+		}
+	}
+
+	// Half RGB hex?
+	if s.len() == 3 {
+		let mut components: Vec<u8> = s.chars().filter_map(|c| hexpair(&[c, c])).collect();
+		components.push(255);
+
+		if let Ok(clr) = Color::try_from(&components[..]) {
+			return Some(clr);
+		}
+	}
+
+	// Half RGBA hex?
+	if s.len() == 4 {
+		let components: Vec<u8> = s.chars().filter_map(|c| hexpair(&[c, c])).collect();
+
+		if let Ok(clr) = Color::try_from(&components[..]) {
+			return Some(clr);
+		}
+	}
+
+	None
 }

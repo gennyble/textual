@@ -28,6 +28,18 @@ impl Color {
 	pub fn as_hex(&self) -> String {
 		format!("{:02X}{:02X}{:02X}{:02X}", self.r, self.g, self.b, self.a)
 	}
+
+	/// This is *not* how colour is mixed, but that's okay.
+	///
+	/// only scales RGB, leaving the alpha channel alone
+	pub fn scale_rgb(&self, scalar: f32) -> Color {
+		Self {
+			r: (self.r as f32 * scalar).clamp(0.0, 255.0) as u8,
+			g: (self.g as f32 * scalar).clamp(0.0, 255.0) as u8,
+			b: (self.b as f32 * scalar).clamp(0.0, 255.0) as u8,
+			a: self.a,
+		}
+	}
 }
 
 impl From<Color> for [u8; 4] {
