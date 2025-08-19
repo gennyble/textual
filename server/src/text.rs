@@ -371,6 +371,19 @@ impl Operation {
 				stripe_width: (fontsize / 8.0) as usize,
 				slope: 2.0,
 			}))),
+			"sappho" => Some(Visual::Pattern(Arc::new(Stripes {
+				colors: vec![
+					(213, 45, 0).into(),
+					(239, 118, 39).into(),
+					(255, 154, 86).into(),
+					Color::WHITE,
+					(209, 98, 164).into(),
+					(181, 86, 144).into(),
+					(163, 2, 98).into(),
+				],
+				stripe_width: (fontsize / 8.0) as usize,
+				slope: 2.0,
+			}))),
 			"ace" => Some(Visual::Pattern(Arc::new(Stripes {
 				colors: vec![
 					Color::BLACK,
